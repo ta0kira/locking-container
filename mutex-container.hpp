@@ -467,7 +467,7 @@ public:
 
 
 /*! \class rw_lock
-    \brief Mutex object that allows multiple readers at once.
+    \brief Lock object that allows multiple readers at once.
  */
 
 class rw_lock : public lock_base {
@@ -550,7 +550,7 @@ private:
 
 
 /*! \class w_lock
-    \brief Mutex object that allows only one thread access at a time.
+    \brief Lock object that allows only one thread access at a time.
  */
 
 class w_lock : public lock_base {
@@ -580,7 +580,7 @@ private:
 
 
 /*! \class r_lock
-    \brief Mutex object that allows multiple readers but no writers.
+    \brief Lock object that allows multiple readers but no writers.
  */
 
 class r_lock : public lock_base {
@@ -611,7 +611,7 @@ private:
 
 
 /*! \class broken_lock
-    \brief Mutex object that is permanently broken.
+    \brief Lock object that is permanently broken.
  */
 
 struct broken_lock : public lock_base {
