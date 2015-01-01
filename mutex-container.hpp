@@ -64,8 +64,6 @@
     code that accesses the encapsulated object.
     \attention This class contains a mutable member, which means that a memory
     page containing even a const instance should not be remapped as read-only.
-    \note The mutex used by this class is recursive, which means it can be
-    locked more than once without unlocking from within the same thread.
     \note This is not a "container" in the STL sense.
  */
 
