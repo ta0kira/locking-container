@@ -59,6 +59,26 @@
 #include <unistd.h>
 
 
+/*! \class mutex_container_base
+    \brief Base class for \ref mutex_container.
+ */
+
+template <class> class mutex_proxy;
+
+template <class Type>
+struct mutex_container_base {
+  typedef Type                     type;
+  typedef mutex_proxy <type>       proxy;
+  typedef mutex_proxy <const type> const_proxy;
+
+  virtual proxy       get(bool Block = true)             = 0;
+  virtual const_proxy get(bool Block = true) const       = 0;
+  virtual const_proxy get_const(bool Block = true) const = 0;
+
+  virtual inline ~mutex_container_base() {}
+};
+
+
 /*! \class mutex_container
     \brief Container to protect an object with a mutex.
 
@@ -72,15 +92,15 @@
     \note This is not a "container" in the STL sense.
  */
 
-template <class> class mutex_proxy;
 class rw_lock;
 
 template <class Type, class Lock = rw_lock>
-class mutex_container {
+class mutex_container : public mutex_container_base <Type> {
 public:
-  typedef Type type;
-  typedef mutex_proxy <type>       proxy;
-  typedef mutex_proxy <const type> const_proxy;
+  typedef mutex_container_base <Type> base;
+  using typename base::type;
+  using typename base::proxy;
+  using typename base::const_proxy;
 
   /*! \brief Constructor.
    *
@@ -94,12 +114,12 @@ public:
    * \attention This function will block if the mutex for "Copy" is
    * locked.
    */
-  mutex_container(const mutex_container &Copy) : contained() {
+  explicit mutex_container(const mutex_container &Copy) : contained() {
     auto_copy(Copy, contained);
   }
 
-  template <class Type2, class Lock2>
-  mutex_container(const mutex_container <Type2, Lock2> &Copy) : contained() {
+  /*! Generalized version of copy constructor.*/
+  explicit mutex_container(const base &Copy) : contained() {
     auto_copy(Copy, contained);
   }
 
@@ -116,12 +136,11 @@ public:
    */
   mutex_container &operator = (const mutex_container &Copy) {
     if (&Copy == this) return *this; //(prevents deadlock when copying self)
-    return this->operator = <> (Copy);
+    return this->operator = (static_cast <const base&> (Copy));
   }
 
-  /*! Template version of \ref mutex_container::operator= .*/
-  template <class Type2, class Lock2>
-  mutex_container &operator = (const mutex_container <Type2, Lock2> &Copy) {
+  /*! Generalized version of \ref mutex_container::operator= .*/
+  mutex_container &operator = (const base &Copy) {
     proxy self = this->get();
     assert(self);
     if (!auto_copy(Copy, *self)) assert(NULL);
@@ -185,9 +204,8 @@ public:
   //@}
 
 private:
-  template <class Type2, class Lock2>
-  static inline bool auto_copy(const mutex_container <Type2, Lock2> &copied, type &copy) {
-    typename mutex_container <Type2, Lock2> ::const_proxy object = copied.get();
+  static inline bool auto_copy(const base &copied, type &copy) {
+    typename base::const_proxy object = copied.get();
     if (!object) return false;
     copy = *object;
     return true;

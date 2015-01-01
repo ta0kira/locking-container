@@ -31,7 +31,7 @@ static void *thread(void *nv);
 int main()
 {
   //make sure assignment works properly
-  mutex_container <long, r_lock> my_data2(THREADS);
+  mutex_container <int, r_lock> my_data2(THREADS);
   //NOTE: this attempts to lock the mutex, and causes an assertion on failure!
   my_data = my_data2;
 
