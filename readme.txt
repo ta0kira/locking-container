@@ -3,7 +3,8 @@ template that protects a single object using mutexes. The contents of the
 container are only available via proxy objects that ensure that the container
 is locked and unlocked properly. The main purpose of the container is to
 mitigate accidental failure to unlock the container when a thread is finished
-using it.
+using it. A secondary objective is to isolate the locking logic from the
+container logic.
 
 There are a few lock types available. The default lock type allows multiple
 threads to read from the container at once, but to write to the container the
