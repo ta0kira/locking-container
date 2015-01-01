@@ -1,3 +1,6 @@
+Please note that this is only designed for POSIX systems (e.g., Linux, OS X,
+and FreeBSD)! This almost certainly won't even compile for other sytem types.
+
 The header mutex-container.hpp contains the class 'mutex_container', which is a
 template that protects a single object using mutexes. The contents of the
 container are only available via proxy objects that ensure that the container
