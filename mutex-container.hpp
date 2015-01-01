@@ -172,12 +172,12 @@ public:
     return proxy(&contained, &locks, Block);
   }
 
-  /*! Const version of \ref mutex_container::get.*/
+  /*! Const version of \ref mutex_container::get .*/
   inline const_proxy get(bool Block = true) const {
     return this->get_const(Block);
   }
 
-  /*! Const version of \ref mutex_container::get.*/
+  /*! Const version of \ref mutex_container::get .*/
   inline const_proxy get_const(bool Block = true) const {
     return const_proxy(&contained, &locks, true, Block);
   }
@@ -197,8 +197,10 @@ private:
 
 
 struct lock_base {
+  /*! Return < 0 must mean failure. Should return the current number of read locks on success.*/
   virtual int lock(bool read, bool block) = 0;
-  virtual int unlock(bool read)           = 0;
+  /*! Return < 0 must mean failure. Should return the current number of read locks on success.*/
+  virtual int unlock(bool read) = 0;
 };
 
 
