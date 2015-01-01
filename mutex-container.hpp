@@ -124,7 +124,7 @@ public:
   mutex_container &operator = (const mutex_container <Type2, Lock2> &Copy) {
     proxy self = this->get();
     assert(self);
-    auto_copy(Copy, *self);
+    if (!auto_copy(Copy, *self)) assert(NULL);
     return *this;
   }
 
@@ -186,9 +186,11 @@ public:
 
 private:
   template <class Type2, class Lock2>
-  static inline void auto_copy(const mutex_container <Type2, Lock2> &copied, type &copy) {
+  static inline bool auto_copy(const mutex_container <Type2, Lock2> &copied, type &copy) {
     typename mutex_container <Type2, Lock2> ::const_proxy object = copied.get();
-    if (object) copy = *object;
+    if (!object) return false;
+    copy = *object;
+    return true;
   }
 
   type         contained;
