@@ -13,7 +13,8 @@ There are a few lock types available. The default lock type allows multiple
 threads to read from the container at once, but to write to the container the
 thread must be the only one accessing it. A second lock type only allows one
 thread to read or write at a time, but it should be more efficient when you
-never want to allow multiple threads access to the container at one time.
+never want to allow multiple threads access to the container at one time. A
+third type of lock allows multiple readers, but no writers.
 
 See test.cpp for an example. You might also want to compile/run it to make sure
 that it works properly on the target system.

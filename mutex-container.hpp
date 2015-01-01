@@ -23,12 +23,12 @@
  *     writers; only one thread can hold a lock at any given time. This should
  *     operate faster if you don't need read locks.
  *
- *   - 'broken_lock <bool>': This is mostly a joke; however, you can use it to
- *     test pathological cases. The template parameter indicates whether or not
- *     locks/unlocks will succeed. Note that "lock" is dubious here; it simply
- *     returns success or failure, without locking anything. If you want to see
- *     what happens to your code when a lock can never be obtained, use
- *     'broken_lock <>' as your lock.
+ *   - 'r_lock': This lock allows multiple readers, but it never allows writers.
+ *     This might be useful if you have a container that will never be written
+ *     to but you nevertheless need to retain the same container semantics.
+ *
+ *   - 'broken_lock': This is mostly a joke; however, you can use it to test
+ *     pathological cases. This lock will always fail to lock and unlock.
  *
  * Other notes:
  *
@@ -466,19 +466,8 @@ public:
 };
 
 
-/*! \class broken_lock
-    \brief Mutex object that is permanently broken. (Not really useful.)
- */
-
-template <bool State = false>
-struct broken_lock : public lock_base {
-  int lock(bool /*unused*/, bool /*unused*/) { return State? 0 : -1; }
-  int unlock(bool /*unused*/)                { return State? 0 : -1; }
-};
-
-
 /*! \class rw_lock
-    \brief Mutex object used internally by mutex_container.
+    \brief Mutex object that allows multiple readers at once.
  */
 
 class rw_lock : public lock_base {
@@ -495,7 +484,7 @@ public:
     if ((block? pthread_mutex_lock : pthread_mutex_trylock)(&write_lock) != 0) return -1;
     //lock the counter lock to check or increment the counter
     //NOTE: this should only ever block for a trivial amount of time
-    if (pthread_mutex_lock(&counter_lock)  != 0) {
+    if (pthread_mutex_lock(&counter_lock) != 0) {
       pthread_mutex_unlock(&write_lock);
       return -1;
     }
@@ -561,7 +550,7 @@ private:
 
 
 /*! \class w_lock
-    \brief Mutex object used internally by mutex_container.
+    \brief Mutex object that allows only one thread access at a time.
  */
 
 class w_lock : public lock_base {
@@ -589,5 +578,45 @@ private:
   pthread_mutex_t write_lock;
 };
 
+
+/*! \class r_lock
+    \brief Mutex object that allows multiple readers but no writers.
+ */
+
+class r_lock : public lock_base {
+public:
+  r_lock() : counter(0) {}
+
+  int lock(bool read, bool /*unused*/) {
+    if (!read) return -1;
+    //NOTE: this should be atomic
+    int new_counter = ++counter;
+    //(check the copy!)
+    assert(new_counter > 0);
+    return new_counter;
+  }
+
+  int unlock(bool read) {
+    if (!read) return -1;
+    //NOTE: this should be atomic
+    int new_counter = --counter;
+    //(check the copy!)
+    assert(new_counter >= 0);
+    return new_counter;
+  }
+
+private:
+  int counter;
+};
+
+
+/*! \class broken_lock
+    \brief Mutex object that is permanently broken.
+ */
+
+struct broken_lock : public lock_base {
+  int lock(bool /*unused*/, bool /*unused*/) { return -1; }
+  int unlock(bool /*unused*/)                { return -1; }
+};
 
 #endif //mutex_container_hpp
