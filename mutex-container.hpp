@@ -33,6 +33,11 @@
  * Other notes:
  *
  *   - You might need to link your executable with libpthread after compiling.
+ *
+ *   - The assignment operators for 'mutex_container' can cause assertions if
+ *     the mutex can't be locked. The assignment operators are too useful to
+ *     eliminate, and assertions seem to be the only logical behavior, with the
+ *     other choice being silent failure to assign.
  */
 
 
@@ -484,7 +489,7 @@ public:
   int lock(bool read, bool block = true) {
     //lock the write lock so that a waiting write thread blocks new reads
     if ((block? pthread_mutex_lock : pthread_mutex_trylock)(&write_lock) != 0) return -1;
-    //lock the read lock to check or increment the counter
+    //lock the counter lock to check or increment the counter
     //NOTE: this should only ever block for a trivial amount of time
     if (pthread_mutex_lock(&counter_lock)  != 0) {
       pthread_mutex_unlock(&write_lock);
@@ -494,7 +499,6 @@ public:
       int new_counter = ++counter;
       //if for some strange reason there's an overflow...
       assert(counter > 0);
-      //NOTE: a read lock isn't really a lock; it just means that the counter is non-zero
       pthread_mutex_unlock(&counter_lock);
       pthread_mutex_unlock(&write_lock);
       return new_counter;
