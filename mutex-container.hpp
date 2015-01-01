@@ -488,7 +488,7 @@ private:
   rw_lock &operator = (const rw_lock&);
 
 public:
-  int lock(bool read, bool block = true) {
+  int lock(bool read, bool block) {
     //lock the write lock so that a waiting write thread blocks new reads
     if ((block? pthread_mutex_lock : pthread_mutex_trylock)(&write_lock) != 0) return -1;
     //lock the counter lock to check or increment the counter
@@ -571,7 +571,7 @@ private:
   w_lock &operator = (const w_lock&);
 
 public:
-  int lock(bool /*unused*/, bool block = true) {
+  int lock(bool /*unused*/, bool block) {
     return ((block? pthread_mutex_lock : pthread_mutex_trylock)(&write_lock) == 0)? 0 : -1;
   }
 
