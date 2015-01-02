@@ -301,9 +301,6 @@ private:
   typedef std::shared_ptr <locker> lock_type;
 
 public:
-  template <class> friend class mutex_proxy_base;
-  template <class> friend class mutex_proxy;
-
   mutex_proxy_base() {}
 
   mutex_proxy_base(Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth, bool new_read, bool block) :
@@ -330,7 +327,6 @@ protected:
 private:
   class locker {
   public:
-
     locker() : pointer(NULL), lock_count(), read(true), locks(NULL), auth() {}
 
     locker(Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth, bool new_read, bool block) :
@@ -347,16 +343,16 @@ private:
       return read;
     }
 
-    inline ~locker() {
-      this->opt_out(true);
-    }
-
     void opt_out(bool unlock) {
       pointer    = NULL;
       lock_count = 0;
       if (unlock && locks) locks->unlock(auth, read);
       auth  = NULL;
       locks = NULL;
+    }
+
+    inline ~locker() {
+      this->opt_out(true);
     }
 
     Type *pointer;
