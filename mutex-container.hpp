@@ -664,7 +664,7 @@ private:
 
 class w_lock : public lock_base {
 public:
-  w_lock() {
+  w_lock() : locked(false) {
     pthread_mutex_init(&write_lock, NULL);
   }
 
@@ -679,11 +679,14 @@ public:
       release_auth(auth, false);
       return -1;
     }
+    locked = true;
     return 0;
   }
 
   int unlock(lock_auth_base *auth, bool /*unused*/) {
     release_auth(auth, false);
+    assert(locked);
+    locked = false;
     return (pthread_mutex_unlock(&write_lock) == 0)? 0 : -1;
   }
 
@@ -692,6 +695,7 @@ public:
   }
 
 private:
+  bool locked;
   pthread_mutex_t write_lock;
 };
 
@@ -829,11 +833,25 @@ private:
 template <>
 class lock_auth <r_lock> : public lock_auth_base {
 public:
+  lock_auth() : counter(0) {}
+
   bool lock_allowed(bool Read) const { return Read; }
 
 private:
-  bool register_auth(bool Read, bool /*unused*/, bool /*unused*/) { return Read; }
-  void release_auth(bool Read) { assert(Read); }
+  bool register_auth(bool Read, bool /*unused*/, bool WriteWait) {
+    if (!Read || (counter && WriteWait)) return false;
+    ++counter;
+    assert(counter > 0);
+    return true;
+  }
+
+  void release_auth(bool Read) {
+    assert(Read);
+    assert(counter > 0);
+    --counter;
+  }
+
+  int  counter;
 };
 
 template <>
