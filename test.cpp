@@ -43,6 +43,7 @@ int main()
   //the threads exit when the value goes below 0
   {
     protected_int::proxy write = my_data.get();
+    //(no clean way to exit if the container can't be locked)
     assert(write);
     *write = -1;
   } //<-- proxy goes out of scope and unlocks 'my_data' here (you can also 'write.clear()')
