@@ -178,12 +178,12 @@ public:
    * \attention This function will block if the mutex for "Copy" is
    * locked.
    */
-  explicit mutex_container(const mutex_container &Copy) : contained() {
+  explicit __attribute__ ((deprecated)) mutex_container(const mutex_container &Copy) : contained() {
     auto_copy(Copy, contained);
   }
 
   /*! Generalized version of copy constructor.*/
-  explicit mutex_container(const base &Copy) : contained() {
+  explicit __attribute__ ((deprecated)) mutex_container(const base &Copy) : contained() {
     auto_copy(Copy, contained);
   }
 
@@ -198,13 +198,13 @@ public:
    *
    * \return *this
    */
-  mutex_container &operator = (const mutex_container &Copy) {
+  mutex_container __attribute__ ((deprecated)) &operator = (const mutex_container &Copy) {
     if (&Copy == this) return *this; //(prevents deadlock when copying self)
     return this->operator = (static_cast <const base&> (Copy));
   }
 
   /*! Generalized version of \ref mutex_container::operator=.*/
-  mutex_container &operator = (const base &Copy) {
+  mutex_container __attribute__ ((deprecated)) &operator = (const base &Copy) {
     proxy self = this->get();
     assert(self);
     if (!auto_copy(Copy, *self)) assert(NULL);
@@ -212,7 +212,7 @@ public:
   }
 
   /*! Object version of \ref mutex_container::operator=.*/
-  mutex_container &operator = (const Type &Object) {
+  mutex_container __attribute__ ((deprecated)) &operator = (const Type &Object) {
     proxy self = this->get();
     assert(self);
     *self = Object;
