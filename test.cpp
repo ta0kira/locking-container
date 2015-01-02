@@ -1,6 +1,7 @@
 #include <time.h>
 #include <errno.h>
 #include <stdio.h>
+#include <assert.h>
 #include <string.h>
 #include <stdarg.h>
 #include <pthread.h>
@@ -30,11 +31,6 @@ static void *thread(void *nv);
 
 int main()
 {
-  //make sure assignment works properly
-  mutex_container <int, r_lock> my_data2(THREADS);
-  //NOTE: this attempts to lock the mutex, and causes an assertion on failure!
-  my_data = my_data2;
-
   //create some threads
   pthread_t threads[THREADS];
   for (long i = 0; i < sizeof threads / sizeof(pthread_t); i++) {
@@ -49,8 +45,11 @@ int main()
   sleep(TIME);
 
   //the threads exit when the value goes below 0
-  //NOTE: this attempts to lock the mutex, and causes an assertion on failure!
-  my_data = -1;
+  {
+    protected_int::proxy write = my_data.get();
+    assert(write);
+    *write = -1;
+  } //<-- proxy goes out of scope and unlocks 'my_data' here (you can also 'write.clear()')
 
   for (long i = 0; i < sizeof threads / sizeof(pthread_t); i++) {
     pthread_join(threads[i], NULL);
