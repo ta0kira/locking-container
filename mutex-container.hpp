@@ -549,8 +549,11 @@ public:
 
 class rw_lock : public lock_base {
 public:
-  rw_lock() : readers(0), readers_waiting(0), writer(false), writer_waiting(false),
-    master_lock(), read_wait(), write_wait() {}
+  rw_lock() : readers(0), readers_waiting(0), writer(false), writer_waiting(false) {
+    pthread_mutex_init(&master_lock, NULL);
+    pthread_cond_init(&read_wait, NULL);
+    pthread_cond_init(&write_wait, NULL);
+  }
 
 private:
   rw_lock(const rw_lock&);
@@ -666,7 +669,9 @@ private:
 
 class w_lock : public lock_base {
 public:
-  w_lock() : write_lock() {}
+  w_lock() {
+    pthread_mutex_init(&write_lock, NULL);
+  }
 
 private:
   w_lock(const w_lock&);
