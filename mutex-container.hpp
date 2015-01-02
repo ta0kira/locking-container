@@ -32,6 +32,8 @@
  *
  * Other notes:
  *
+ *   - You must enable C++11 (or higher) when using this header.
+ *
  *   - You might need to link your executable with libpthread after compiling.
  *
  *   - The assignment operators for 'mutex_container' can cause assertions if
