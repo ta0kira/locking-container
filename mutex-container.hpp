@@ -91,8 +91,6 @@ private:
 
 template <class> class mutex_proxy;
 
-template <class> class lock_auth;
-
 template <class Type>
 struct mutex_container_base {
   typedef Type                             type;
@@ -150,6 +148,7 @@ struct mutex_container_base {
  */
 
 class rw_lock;
+template <class> class lock_auth;
 
 template <class Type, class Lock = rw_lock>
 class mutex_container : public mutex_container_base <Type> {
