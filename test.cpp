@@ -80,8 +80,8 @@ static void *thread(void *nv) {
   if (pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL) != 0) return NULL;
 
   //get an authorization object, to prevent deadlocks
-  //NOTE: you should only use the authorization with another container that has
-  //the same lock type! (it doesn't need to be an 'int' container, however.)
+  //NOTE: for the most part you should be able to use any authorization type
+  //with any lock type, but the behavior will be the stricter of the two
   protected_int::auth_type auth(protected_int::new_auth());
 
   long n = (long) nv, counter = 0;
