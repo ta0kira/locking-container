@@ -20,11 +20,7 @@
 typedef mutex_container <int> protected_int;
 static protected_int my_data(THREADS);
 
-//protect the output file while we're at it
-typedef mutex_container <FILE*, w_lock> protected_out;
-static protected_out stdout2(stdout);
-
-static void send_output(protected_out &out, const char *format, ...);
+static void send_output(const char *format, ...);
 
 static void *thread(void *nv);
 
@@ -34,10 +30,10 @@ int main()
   //create some threads
   pthread_t threads[THREADS];
   for (long i = 0; i < sizeof threads / sizeof(pthread_t); i++) {
-    send_output(stdout2, "start %li\n", i);
+    send_output("start %li\n", i);
     threads[i] = pthread_t();
     if (pthread_create(threads + i, NULL, &thread, (void*) i) != 0) {
-      send_output(stdout2, "error: %s\n", strerror(errno));
+      send_output("error: %s\n", strerror(errno));
     }
   }
 
@@ -53,19 +49,25 @@ int main()
 
   for (long i = 0; i < sizeof threads / sizeof(pthread_t); i++) {
     pthread_join(threads[i], NULL);
-    send_output(stdout2, "join %li\n", i);
+    send_output("join %li\n", i);
   }
 }
 
 
 //a print function that ensures we have exclusive access to the output
-static void send_output(protected_out &out, const char *format, ...) {
+static void send_output(const char *format, ...) {
+  //protect the output file while we're at it
+  typedef mutex_container <FILE*, w_lock> protected_out;
+  //(this is local so that it can't be involved in a deadlock)
+  static protected_out stdout2(stdout);
+
   va_list ap;
   va_start(ap, format);
+
   //NOTE: authorization isn't important here because it's not possible for the
-  //caller to lock another container while it holds a lock on 'out'; deadlocks
-  //aren't an issue with respect to 'out'
-  protected_out::proxy write = out.get();
+  //caller to lock another container while it holds a lock on 'stdout2';
+  //deadlocks aren't an issue with respect to 'stdout2'
+  protected_out::proxy write = stdout2.get();
   if (!write) return;
   vfprintf(*write, format, ap);
 }
@@ -91,40 +93,40 @@ static void *thread(void *nv) {
     //read a bunch of times
 
     for (int i = 0; i < THREADS + n; i++) {
-      send_output(stdout2, "?read %li\n", n);
+      send_output("?read %li\n", n);
       protected_int::const_proxy read = my_data.get_auth_const(auth, READ_BLOCK);
       if (!read) {
-        send_output(stdout2, "!read %li\n", n);
+        send_output("!read %li\n", n);
         return NULL;
       }
 
-      send_output(stdout2, "+read %li (%i) -> %i\n", n, read.last_lock_count(), *read);
-      send_output(stdout2, "@read %li %i\n", n, !!my_data.get_auth_const(auth, READ_BLOCK));
+      send_output("+read %li (%i) -> %i\n", n, read.last_lock_count(), *read);
+      send_output("@read %li %i\n", n, !!my_data.get_auth_const(auth, READ_BLOCK));
       if (*read < 0) return NULL;
       nanosleep(&wait, NULL);
 
       read.clear();
-      send_output(stdout2, "-read %li\n", n);
+      send_output("-read %li\n", n);
       nanosleep(&wait, NULL);
     }
 
     //write once
 
-    send_output(stdout2, "?write %li\n", n);
+    send_output("?write %li\n", n);
     protected_int::proxy write = my_data.get_auth(auth, WRITE_BLOCK);
     if (!write) {
-      send_output(stdout2, "!write %li\n", n);
+      send_output("!write %li\n", n);
       return NULL;
     }
 
-    send_output(stdout2, "+write %li (%i)\n", n, write.last_lock_count());
-    send_output(stdout2, "@write %li %i\n", n, !!my_data.get_auth(auth, WRITE_BLOCK));
+    send_output("+write %li (%i)\n", n, write.last_lock_count());
+    send_output("@write %li %i\n", n, !!my_data.get_auth(auth, WRITE_BLOCK));
     if (*write < 0) return NULL;
     *write = n;
     nanosleep(&wait, NULL);
 
     write.clear();
-    send_output(stdout2, "-write %li\n", n);
+    send_output("-write %li\n", n);
     nanosleep(&wait, NULL);
   }
 }
