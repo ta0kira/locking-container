@@ -69,11 +69,19 @@
     @see lock_auth
  */
 
-struct lock_auth_base {
-  virtual bool register_auth(bool Read, bool ReadWait, bool WriteWait) = 0;
-  virtual void release_auth(bool Read)  = 0;
+class lock_base;
+
+class lock_auth_base {
+public:
+  virtual bool lock_allowed(bool Read) const = 0;
 
   virtual inline ~lock_auth_base() {}
+
+private:
+  friend class lock_base;
+
+  virtual bool register_auth(bool Read, bool ReadWait, bool WriteWait) = 0;
+  virtual void release_auth(bool Read) = 0;
 };
 
 
@@ -92,15 +100,15 @@ struct mutex_container_base {
   typedef mutex_proxy <const type>         const_proxy;
   typedef std::shared_ptr <lock_auth_base> auth_type;
 
-  virtual proxy get(bool Block = true) {
+  inline proxy get(bool Block = true) {
     return this->get_auth(NULL, Block);
   }
 
-  virtual const_proxy get(bool Block = true) const {
+  inline const_proxy get(bool Block = true) const {
     return this->get_auth(NULL, Block);
   }
 
-  virtual const_proxy get_const(bool Block = true) const {
+  inline const_proxy get_const(bool Block = true) const {
     return this->get_auth_const(NULL, Block);
   }
 
@@ -283,11 +291,21 @@ private:
 };
 
 
-struct lock_base {
+class lock_base {
+public:
   /*! Return < 0 must mean failure. Should return the current number of read locks on success.*/
   virtual int lock(lock_auth_base *auth, bool read, bool block) = 0;
   /*! Return < 0 must mean failure. Should return the current number of read locks on success.*/
   virtual int unlock(lock_auth_base *auth, bool read) = 0;
+
+protected:
+  static inline bool register_auth(lock_auth_base *auth, bool Read, bool ReadWait, bool WriteWait) {
+    return auth? auth->register_auth(Read, ReadWait, WriteWait) : true;
+  }
+
+  static inline void release_auth(lock_auth_base *auth, bool Read) {
+    if (auth) auth->release_auth(Read);
+  }
 };
 
 
@@ -572,14 +590,14 @@ public:
   int lock(lock_auth_base *auth, bool read, bool block) {
     if (pthread_mutex_lock(&master_lock) != 0) return -1;
     //make sure this is an authorized lock type for the caller
-    if (auth && !auth->register_auth(read, readers_waiting, writer_waiting)) {
+    if (!register_auth(auth, read, readers_waiting, writer_waiting)) {
       pthread_mutex_unlock(&master_lock);
       return -1;
     }
     //check for blocking behavior
     bool must_block = writer || writer_waiting || (!read && readers);
     if (!block && must_block) {
-      if (auth) auth->release_auth(read);
+      release_auth(auth, read);
       pthread_mutex_unlock(&master_lock);
       return -1;
     }
@@ -590,7 +608,7 @@ public:
       //a read lock and there is a writer waiting
       while (writer || writer_waiting) {
         if (pthread_cond_wait(&read_wait, &master_lock) != 0) {
-          if (auth) auth->release_auth(read);
+          release_auth(auth, read);
           --readers_waiting;
           pthread_mutex_unlock(&master_lock);
           return -1;
@@ -609,7 +627,7 @@ public:
         //NOTE: use 'read_wait' here, since that's what a write unlock broadcasts on
         //NOTE: another thread should be blocking in 'write_wait' below
         if (pthread_cond_wait(&read_wait, &master_lock) != 0) {
-          if (auth) auth->release_auth(read);
+          release_auth(auth, read);
           --readers_waiting;
           pthread_mutex_unlock(&master_lock);
           return -1;
@@ -620,7 +638,7 @@ public:
       //get a write lock
       while (writer || readers) {
         if (pthread_cond_wait(&write_wait, &master_lock) != 0) {
-          if (auth) auth->release_auth(read);
+          release_auth(auth, read);
           writer_waiting = false;
           pthread_mutex_unlock(&master_lock);
           return -1;
@@ -635,7 +653,7 @@ public:
 
   int unlock(lock_auth_base *auth, bool read) {
     if (pthread_mutex_lock(&master_lock) != 0) return -1;
-    if (auth) auth->release_auth(read);
+    release_auth(auth, read);
     if (read) {
       assert(!writer && readers > 0);
       int new_readers = --readers;
@@ -686,16 +704,16 @@ private:
 
 public:
   int lock(lock_auth_base *auth, bool /*unused*/, bool block) {
-    if (auth && !auth->register_auth(false, 0, 0)) return -1;
+    if (!register_auth(auth, false, 0, 0)) return -1;
     if ((block? pthread_mutex_lock : pthread_mutex_trylock)(&write_lock) != 0) {
-      if (auth) auth->release_auth(false);
+      release_auth(auth, false);
       return -1;
     }
     return 0;
   }
 
   int unlock(lock_auth_base *auth, bool /*unused*/) {
-    if (auth) auth->release_auth(false);
+    release_auth(auth, false);
     return (pthread_mutex_unlock(&write_lock) == 0)? 0 : -1;
   }
 
@@ -718,7 +736,7 @@ public:
 
   int lock(lock_auth_base *auth, bool read, bool /*unused*/) {
     if (!read) return -1;
-    if (auth && !auth->register_auth(read, 0, 0)) return -1;
+    if (!register_auth(auth, read, 0, 0)) return -1;
     //NOTE: this should be atomic
     int new_counter = ++counter;
     //(check the copy!)
@@ -728,7 +746,7 @@ public:
 
   int unlock(lock_auth_base *auth, bool read) {
     if (!read) return -1;
-    if (auth) auth->release_auth(read);
+    release_auth(auth, read);
     //NOTE: this should be atomic
     int new_counter = --counter;
     //(check the copy!)
@@ -770,6 +788,10 @@ class lock_auth : public lock_auth_base {
 public:
   lock_auth() : used(false) {}
 
+  bool lock_allowed(bool /*unused*/) const {
+    return !used;
+  }
+
 private:
   lock_auth(const lock_auth&);
   lock_auth &operator = (const lock_auth&);
@@ -791,6 +813,11 @@ template <>
 class lock_auth <rw_lock> : public lock_auth_base {
 public:
   lock_auth() : counter(0), write(false) {}
+
+  bool lock_allowed(bool Read) const {
+    if (Read) return !write;
+    else      return !write && !counter;
+  }
 
 private:
   lock_auth(const lock_auth&);
@@ -826,12 +853,20 @@ private:
 
 template <>
 class lock_auth <r_lock> : public lock_auth_base {
+public:
+  bool lock_allowed(bool Read) const { return Read; }
+
+private:
   bool register_auth(bool Read, bool /*unused*/, bool /*unused*/) { return Read; }
   void release_auth(bool Read) { assert(Read); }
 };
 
 template <>
 class lock_auth <broken_lock> : public lock_auth_base {
+public:
+  bool lock_allowed(bool /*unused*/) const { return false; }
+
+private:
   bool register_auth(bool /*unused*/, bool /*unused*/, bool /*unused*/) { return false; }
   void release_auth(bool /*unused*/) { assert(false); }
 };
