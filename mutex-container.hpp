@@ -102,10 +102,6 @@ struct mutex_container_base {
     return this->get_auth(NULL, Block);
   }
 
-  inline const_proxy get(bool Block = true) const {
-    return this->get_auth(NULL, Block);
-  }
-
   inline const_proxy get_const(bool Block = true) const {
     return this->get_auth_const(NULL, Block);
   }
@@ -114,16 +110,11 @@ struct mutex_container_base {
     return this->get_auth(Authorization.get(), Block);
   }
 
-  inline const_proxy get_auth(auth_type &Authorization, bool Block = true) const {
-    return this->get_auth(Authorization.get(), Block);
-  }
-
   inline const_proxy get_auth_const(auth_type &Authorization, bool Block = true) const {
     return this->get_auth_const(Authorization.get(), Block);
   }
 
   virtual proxy       get_auth(lock_auth_base *Authorization, bool Block = true)             = 0;
-  virtual const_proxy get_auth(lock_auth_base *Authorization, bool Block = true) const       = 0;
   virtual const_proxy get_auth_const(lock_auth_base *Authorization, bool Block = true) const = 0;
 
   virtual auth_type get_new_auth() const {
@@ -253,11 +244,6 @@ public:
   inline proxy get_auth(lock_auth_base *Authorization, bool Block = true) {
     //NOTE: no read/write choice is given here!
     return proxy(&contained, &locks, Authorization, Block);
-  }
-
-  /*! Const version of \ref mutex_container::get.*/
-  inline const_proxy get_auth(lock_auth_base *Authorization, bool Block = true) const {
-    return this->get_auth_const(Authorization, Block);
   }
 
   /*! Const version of \ref mutex_container::get.*/
@@ -491,9 +477,6 @@ private:
 public:
   mutex_proxy() : mutex_proxy_base <const Type> () {}
 
-  mutex_proxy(const mutex_proxy <Type> &Copy) :
-    mutex_proxy_base <const Type> (Copy) {}
-
   /** @name Checking Referred-to Object
   *
   */
@@ -510,18 +493,6 @@ public:
    */
   inline mutex_proxy &clear() {
     this->opt_out();
-    return *this;
-  }
-
-  /*! \brief Copy from a non-const instance.
-   *
-   * Assign an instance of this class of the same type, but non-const.
-   * \param Copy An object to copy.
-   *
-   * \return *this
-   */
-  mutex_proxy &operator = (const mutex_proxy <Type> &Copy) {
-    mutex_proxy_base <const Type> ::operator = (Copy);
     return *this;
   }
 
