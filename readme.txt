@@ -30,7 +30,7 @@ to note that the authorization objects don't track which containers the thread
 holds a lock for! From the perspective of authorization, attempting to lock a
 second container is the same as attempting to lock the same container again.
 
-See test.cpp for an example. You might also want to compile/run it to make sure
-that it works properly on the target system.
+See simple.cpp for an example. You might also want to compile/run test.cpp to
+make sure that 'mutex_container' works properly on the target system.
 
 Kevin P. Barry [ta0kira@gmail.com], 20150101
