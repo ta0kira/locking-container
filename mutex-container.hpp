@@ -385,7 +385,6 @@ template <class Type>
 class mutex_proxy : public mutex_proxy_base <Type> {
 private:
   template <class, class> friend class mutex_container;
-  template <class>        friend class mutex_proxy;
 
   mutex_proxy(Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth, bool block) :
     mutex_proxy_base <Type> (new_pointer, new_locks, new_auth, false, block) {}
