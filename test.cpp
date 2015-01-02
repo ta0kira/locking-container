@@ -76,7 +76,7 @@ static void *thread(void *nv) {
 
   //get an authorization object, to prevent deadlocks
   //NOTE: you should only use the authorization with another container that has
-  //the same lock type!
+  //the same lock type! (it doesn't need to be an 'int' container, however.)
   protected_int::auth_type auth(protected_int::new_auth());
 
   long n = (long) nv;
