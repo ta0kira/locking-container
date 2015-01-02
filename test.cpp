@@ -16,9 +16,9 @@
 #define WRITE_BLOCK true
 
 
-//the data being protected
+//the data being protected (initialize the 'int' to 'THREADS')
 typedef mutex_container <int> protected_int;
-static protected_int my_data;
+static protected_int my_data(THREADS);
 
 //protect the output file while we're at it
 typedef mutex_container <FILE*, w_lock> protected_out;
