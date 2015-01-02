@@ -77,7 +77,7 @@ static void *thread(void *nv) {
   //get an authorization object, to prevent deadlocks
   //NOTE: you should only use the authorization with another container that has
   //the same lock type!
-  protected_int::auth_type auth(my_data.get_new_auth());
+  protected_int::auth_type auth(protected_int::new_auth());
 
   long n = (long) nv;
   struct timespec wait = { 0, (10 + n) * 10 * 1000 * 1000 };
