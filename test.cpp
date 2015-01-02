@@ -84,7 +84,7 @@ static void *thread(void *nv) {
   //the same lock type! (it doesn't need to be an 'int' container, however.)
   protected_int::auth_type auth(protected_int::new_auth());
 
-  long n = (long) nv;
+  long n = (long) nv, counter = 0;
   struct timespec wait = { 0, (10 + n) * 10 * 1000 * 1000 };
   nanosleep(&wait, NULL);
 
@@ -103,7 +103,12 @@ static void *thread(void *nv) {
 
       send_output("+read %li (%i) -> %i\n", n, read.last_lock_count(), *read);
       send_output("@read %li %i\n", n, !!my_data.get_auth_const(auth, READ_BLOCK));
-      if (*read < 0) return NULL;
+      if (*read < 0) {
+      send_output("counter %li %i\n", n, counter);
+        return NULL;
+      }
+      //(sort of like a contest, to see how many times each thread reads its own number)
+      if (*read == n) ++counter;
       nanosleep(&wait, NULL);
 
       read.clear();
@@ -122,7 +127,10 @@ static void *thread(void *nv) {
 
     send_output("+write %li (%i)\n", n, write.last_lock_count());
     send_output("@write %li %i\n", n, !!my_data.get_auth(auth, WRITE_BLOCK));
-    if (*write < 0) return NULL;
+    if (*write < 0) {
+      send_output("counter %li %i\n", n, counter);
+        return NULL;
+    }
     *write = n;
     nanosleep(&wait, NULL);
 

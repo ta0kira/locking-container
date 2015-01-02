@@ -800,7 +800,7 @@ private:
 
   bool register_auth(bool Read, bool ReadWait, bool WriteWait) {
     if (write) return false;
-    //reject if this thread is blocking writers
+    //reject if this thread might be blocking writers
     if (counter && (WriteWait || !Read)) return false;
     if (Read) {
       ++counter;
