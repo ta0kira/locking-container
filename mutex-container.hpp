@@ -704,6 +704,11 @@ class r_lock : public lock_base {
 public:
   r_lock() : counter(0) {}
 
+private:
+  r_lock(const r_lock&);
+  r_lock &operator = (const r_lock&);
+
+public:
   int lock(lock_auth_base *auth, bool read, bool /*unused*/) {
     if (!read) return -1;
     if (!register_auth(auth, read, 0, 0)) return -1;
