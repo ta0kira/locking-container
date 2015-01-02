@@ -54,9 +54,25 @@
 #ifndef mutex_container_hpp
 #define mutex_container_hpp
 
+#include <atomic>
+#include <memory>
+
 #include <pthread.h>
 #include <assert.h>
 #include <unistd.h>
+
+
+/*! \class lock_auth_base
+    \brief Base class for lock authorization classes.
+    @see lock_auth
+ */
+
+struct lock_auth_base {
+  virtual bool register_auth(bool Read, bool ReadWait, bool WriteWait) = 0;
+  virtual void release_auth(bool Read)  = 0;
+
+  virtual inline ~lock_auth_base() {}
+};
 
 
 /*! \class mutex_container_base
@@ -65,15 +81,34 @@
 
 template <class> class mutex_proxy;
 
+template <class> class lock_auth;
+
 template <class Type>
 struct mutex_container_base {
-  typedef Type                     type;
-  typedef mutex_proxy <type>       proxy;
-  typedef mutex_proxy <const type> const_proxy;
+  typedef Type                             type;
+  typedef mutex_proxy <type>               proxy;
+  typedef mutex_proxy <const type>         const_proxy;
+  typedef std::shared_ptr <lock_auth_base> auth_type;
 
-  virtual proxy       get(bool Block = true)             = 0;
-  virtual const_proxy get(bool Block = true) const       = 0;
-  virtual const_proxy get_const(bool Block = true) const = 0;
+  virtual proxy get(bool Block = true) {
+    return this->get_auth(NULL, Block);
+  }
+
+  virtual const_proxy get(bool Block = true) const {
+    return this->get_auth(NULL, Block);
+  }
+
+  virtual const_proxy get_const(bool Block = true) const {
+    return this->get_auth(NULL, Block);
+  }
+
+  virtual proxy       get_auth(lock_auth_base *Authorization, bool Block = true)             = 0;
+  virtual const_proxy get_auth(lock_auth_base *Authorization, bool Block = true) const       = 0;
+  virtual const_proxy get_auth_const(lock_auth_base *Authorization, bool Block = true) const = 0;
+
+  virtual auth_type get_new_auth() const {
+    return auth_type();
+  }
 
   virtual inline ~mutex_container_base() {}
 };
@@ -96,11 +131,15 @@ class rw_lock;
 
 template <class Type, class Lock = rw_lock>
 class mutex_container : public mutex_container_base <Type> {
+private:
+  typedef lock_auth <Lock> auth_base_type;
+
 public:
   typedef mutex_container_base <Type> base;
   using typename base::type;
   using typename base::proxy;
   using typename base::const_proxy;
+  using typename base::auth_type;
 
   /*! \brief Constructor.
    *
@@ -139,7 +178,7 @@ public:
     return this->operator = (static_cast <const base&> (Copy));
   }
 
-  /*! Generalized version of \ref mutex_container::operator= .*/
+  /*! Generalized version of \ref mutex_container::operator=.*/
   mutex_container &operator = (const base &Copy) {
     proxy self = this->get();
     assert(self);
@@ -147,7 +186,7 @@ public:
     return *this;
   }
 
-  /*! Object version of \ref mutex_container::operator= .*/
+  /*! Object version of \ref mutex_container::operator=.*/
   mutex_container &operator = (const Type &Object) {
     proxy self = this->get();
     assert(self);
@@ -182,26 +221,37 @@ public:
    * should only be passed within the same thread that
    * \ref mutex_container::get was called from. This is because the proxy
    * object uses reference counting that isn't reentrant.
+   * \param Authorization Authorization object to prevent deadlocks.
    * \param Block Should the call block for a mutex lock?
    *
    * \return proxy object
    */
-  inline proxy get(bool Block = true) {
+  inline proxy get_auth(lock_auth_base *Authorization, bool Block = true) {
     //NOTE: no read/write choice is given here!
-    return proxy(&contained, &locks, Block);
+    return proxy(&contained, &locks, Authorization, Block);
   }
 
-  /*! Const version of \ref mutex_container::get .*/
-  inline const_proxy get(bool Block = true) const {
-    return this->get_const(Block);
+  /*! Const version of \ref mutex_container::get.*/
+  inline const_proxy get_auth(lock_auth_base *Authorization, bool Block = true) const {
+    return this->get_auth_const(Authorization, Block);
   }
 
-  /*! Const version of \ref mutex_container::get .*/
-  inline const_proxy get_const(bool Block = true) const {
-    return const_proxy(&contained, &locks, true, Block);
+  /*! Const version of \ref mutex_container::get.*/
+  inline const_proxy get_auth_const(lock_auth_base *Authorization, bool Block = true) const {
+    return const_proxy(&contained, &locks, Authorization, true, Block);
   }
 
   //@}
+
+  /*! Get a new authorization object.*/
+  virtual auth_type get_new_auth() const {
+    return mutex_container::new_auth();
+  }
+
+  /*! Get a new authorization object.*/
+  static auth_type new_auth() {
+    return auth_type(new auth_base_type);
+  }
 
 private:
   static inline bool auto_copy(const base &copied, type &copy) {
@@ -218,86 +268,90 @@ private:
 
 struct lock_base {
   /*! Return < 0 must mean failure. Should return the current number of read locks on success.*/
-  virtual int lock(bool read, bool block) = 0;
+  virtual int lock(lock_auth_base *auth, bool read, bool block) = 0;
   /*! Return < 0 must mean failure. Should return the current number of read locks on success.*/
-  virtual int unlock(bool read) = 0;
+  virtual int unlock(lock_auth_base *auth, bool read) = 0;
 };
 
 
 template <class Type>
 class mutex_proxy_base {
+private:
+  class locker;
+  typedef std::shared_ptr <locker> lock_type;
+
 public:
   template <class> friend class mutex_proxy_base;
   template <class> friend class mutex_proxy;
 
-  mutex_proxy_base() : pointer(NULL), read(true), locks(NULL), counter(NULL) {}
+  mutex_proxy_base() {}
 
-  mutex_proxy_base(Type *new_pointer, lock_base *new_locks, bool new_read, bool block) :
-    pointer(new_pointer), read(new_read), locks(new_locks), counter(new int(1)), lock_count() {
-    if (!locks || (lock_count = locks->lock(read, block)) < 0) this->opt_out(false);
-  }
+  mutex_proxy_base(Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth, bool new_read, bool block) :
+    container_lock(new locker(new_pointer, new_locks, new_auth, new_read, block)) {}
 
-  explicit mutex_proxy_base(const mutex_proxy_base &copy) :
-    pointer(NULL), read(true), locks(NULL), counter(NULL), lock_count() {
-    *this = copy;
-  }
-
-  template <class Type2>
-  explicit mutex_proxy_base(const mutex_proxy_base <Type2> &copy) :
-    pointer(NULL), read(true), locks(NULL), counter(NULL), lock_count() {
-    *this = copy;
-  }
-
-  mutex_proxy_base &operator = (const mutex_proxy_base &copy) {
-    if (&copy == this) return *this;
-    return this->operator = <Type> (copy);
-  }
-
-  template <class Type2>
-  mutex_proxy_base &operator = (const mutex_proxy_base <Type2> &copy) {
-    this->opt_out(true);
-    counter = copy.counter;
-    if (counter) ++*counter;
-    pointer    = counter? copy.pointer    : NULL;
-    read       = copy.read;
-    locks      = counter? copy.locks      : NULL;
-    lock_count = counter? copy.lock_count : 0;
-    return *this;
-  }
-
-  int last_lock_count() const {
+  inline int last_lock_count() const {
     //(mostly provided for debugging)
-    return lock_count;
-  }
-
-  bool read_only() const {
-    return read;
-  }
-
-  inline ~mutex_proxy_base() {
-    this->opt_out(true);
+    return container_lock? container_lock->lock_count : 0;
   }
 
 protected:
-  void opt_out(bool unlock) {
-    if (counter && --*counter <= 0) {
-      pointer = NULL;
-      int *old_counter = counter;
-      counter = NULL;
-      delete old_counter;
-      if (unlock && locks) locks->unlock(read);
-    }
-    pointer    = NULL;
-    locks      = NULL;
-    counter    = NULL;
-    lock_count = 0;
+  inline void opt_out() {
+    container_lock.reset();
+  }
+
+  inline Type *pointer() {
+    return container_lock? container_lock->pointer : 0;
+  }
+
+  inline Type *pointer() const {
+    return container_lock? container_lock->pointer : 0;
   }
 
 private:
-  Type      *pointer;
-  bool       read;
-  lock_base *locks;
-  int       *counter, lock_count;
+  class locker {
+  public:
+
+    locker() : pointer(NULL), lock_count(), read(true), locks(NULL), auth() {}
+
+    locker(Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth, bool new_read, bool block) :
+      pointer(new_pointer), lock_count(), read(new_read), locks(new_locks), auth(new_auth) {
+      if (!locks || (lock_count = locks->lock(auth, read, block)) < 0) this->opt_out(false);
+    }
+
+    int last_lock_count() const {
+      //(mostly provided for debugging)
+      return lock_count;
+    }
+
+    bool read_only() const {
+      return read;
+    }
+
+    inline ~locker() {
+      this->opt_out(true);
+    }
+
+    void opt_out(bool unlock) {
+      pointer    = NULL;
+      lock_count = 0;
+      if (unlock && locks) locks->unlock(auth, read);
+      auth  = NULL;
+      locks = NULL;
+    }
+
+    Type *pointer;
+    int   lock_count;
+
+  private:
+    locker(const locker&);
+    locker &operator = (const locker&);
+
+    bool            read;
+    lock_base      *locks;
+    lock_auth_base *auth;
+  };
+
+  lock_type container_lock;
 };
 
 
@@ -317,8 +371,8 @@ private:
   template <class, class> friend class mutex_container;
   template <class>        friend class mutex_proxy;
 
-  mutex_proxy(Type *new_pointer, lock_base *new_locks, bool block) :
-    mutex_proxy_base <Type> (new_pointer, new_locks, false, block) {}
+  mutex_proxy(Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth, bool block) :
+    mutex_proxy_base <Type> (new_pointer, new_locks, new_auth, false, block) {}
 
 public:
   mutex_proxy() : mutex_proxy_base <Type> () {}
@@ -338,7 +392,7 @@ public:
    * \return *this
    */
   inline mutex_proxy &clear() {
-    this->opt_out(true);
+    this->opt_out();
     return *this;
   }
 
@@ -347,7 +401,7 @@ public:
    * \return valid (true) or invalid (false)
    */
   inline operator bool() const {
-    return mutex_proxy_base <Type> ::pointer;
+    return this->pointer();
   }
 
   /*! \brief Check if the reference is invalid.
@@ -355,7 +409,7 @@ public:
    * \return invalid (true) or valid (false)
    */
   inline bool operator ! () const {
-    return !mutex_proxy_base <Type> ::pointer;
+    return !this->pointer();
   }
 
   /*! \brief Compare the two referenced objects.
@@ -363,7 +417,7 @@ public:
    * \return equal (true) or unequal (false)
    */
   inline bool operator == (const mutex_proxy &equal) const {
-    return mutex_proxy_base <Type> ::pointer == equal.mutex_proxy_base <Type> ::pointer;
+    return this->pointer() == equal.pointer();
   }
 
   /*! \brief Compare the two referenced objects.
@@ -371,7 +425,7 @@ public:
    * \return equal (true) or unequal (false)
    */
   inline bool operator == (const mutex_proxy <const Type> &equal) const {
-    return mutex_proxy_base <Type> ::pointer == equal.mutex_proxy_base <const Type> ::pointer;
+    return this->pointer() == equal.pointer();
   }
 
   //@}
@@ -381,12 +435,12 @@ public:
   */
   //@{
 
-  inline operator       Type*()          { return mutex_proxy_base <Type> ::pointer; }
-  inline operator const Type*() const    { return mutex_proxy_base <Type> ::pointer; }
-  inline       Type &operator *()        { return *mutex_proxy_base <Type> ::pointer; }
-  inline const Type &operator *() const  { return *mutex_proxy_base <Type> ::pointer; }
-  inline       Type *operator ->()       { return mutex_proxy_base <Type> ::pointer; }
-  inline const Type *operator ->() const { return mutex_proxy_base <Type> ::pointer; }
+  inline operator       Type*()          { return  this->pointer(); }
+  inline operator const Type*() const    { return  this->pointer(); }
+  inline       Type &operator *()        { return *this->pointer(); }
+  inline const Type &operator *() const  { return *this->pointer(); }
+  inline       Type *operator ->()       { return  this->pointer(); }
+  inline const Type *operator ->() const { return  this->pointer(); }
 
   //@}
 };
@@ -397,8 +451,8 @@ class mutex_proxy <const Type> : public mutex_proxy_base <const Type> {
 private:
   template <class, class> friend class mutex_container;
 
-  mutex_proxy(const Type *new_pointer, lock_base *new_locks, bool read, bool block) :
-    mutex_proxy_base <const Type> (new_pointer, new_locks, read, block) {}
+  mutex_proxy(const Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth, bool read, bool block) :
+    mutex_proxy_base <const Type> (new_pointer, new_locks, new_auth, read, block) {}
 
 public:
   mutex_proxy() : mutex_proxy_base <const Type> () {}
@@ -421,7 +475,7 @@ public:
    * \return *this
    */
   inline mutex_proxy &clear() {
-    this->opt_out(true);
+    this->opt_out();
     return *this;
   }
 
@@ -442,7 +496,7 @@ public:
    * \return valid (true) or invalid (false)
    */
   inline operator bool() const {
-    return mutex_proxy_base <const Type> ::pointer;
+    return this->pointer();
   }
 
   /*! \brief Check if the reference is invalid.
@@ -450,7 +504,7 @@ public:
    * \return invalid (true) or valid (false)
    */
   inline bool operator ! () const {
-    return !mutex_proxy_base <const Type> ::pointer;
+    return !this->pointer();
   }
 
   /*! \brief Compare the two referenced objects.
@@ -458,7 +512,7 @@ public:
    * \return equal (true) or unequal (false)
    */
   inline bool operator == (const mutex_proxy &equal) const {
-    return mutex_proxy_base <const Type> ::pointer == equal.mutex_proxy_base <const Type> ::pointer;
+    return this->pointer() == equal.pointer();
   }
 
   /*! \brief Compare the two referenced objects.
@@ -466,7 +520,7 @@ public:
    * \return equal (true) or unequal (false)
    */
   inline bool operator == (const mutex_proxy <Type> &equal) const {
-    return mutex_proxy_base <const Type> ::pointer == equal.mutex_proxy_base <Type> ::pointer;
+    return this->pointer() == equal.pointer();
   }
 
   //@}
@@ -476,9 +530,9 @@ public:
   */
   //@{
 
-  inline operator const Type*() const    { return mutex_proxy_base <const Type> ::pointer; }
-  inline const Type &operator *() const  { return *mutex_proxy_base <const Type> ::pointer; }
-  inline const Type *operator ->() const { return mutex_proxy_base <const Type> ::pointer; }
+  inline operator const Type*() const    { return  this->pointer(); }
+  inline const Type &operator *() const  { return *this->pointer(); }
+  inline const Type *operator ->() const { return  this->pointer(); }
 
   //@}
 };
@@ -490,80 +544,114 @@ public:
 
 class rw_lock : public lock_base {
 public:
-  rw_lock() : counter(0), write_waiting(false), counter_lock(), write_lock(), write_wait() {}
+  rw_lock() : readers(0), readers_waiting(0), writer(false), writer_waiting(false),
+    master_lock(), read_wait(), write_wait() {}
 
 private:
   rw_lock(const rw_lock&);
   rw_lock &operator = (const rw_lock&);
 
 public:
-  int lock(bool read, bool block) {
-    //lock the write lock so that a waiting write thread blocks new reads
-    if ((block? pthread_mutex_lock : pthread_mutex_trylock)(&write_lock) != 0) return -1;
-    //lock the counter lock to check or increment the counter
-    //NOTE: this should only ever block for a trivial amount of time
-    if (pthread_mutex_lock(&counter_lock) != 0) {
-      pthread_mutex_unlock(&write_lock);
+  int lock(lock_auth_base *auth, bool read, bool block) {
+    if (pthread_mutex_lock(&master_lock) != 0) return -1;
+    //make sure this is an authorized lock type for the caller
+    if (auth && !auth->register_auth(read, readers_waiting, writer_waiting)) {
+      pthread_mutex_unlock(&master_lock);
+      return -1;
+    }
+    //check for blocking behavior
+    bool must_block = writer || writer_waiting || (!read && readers);
+    if (!block && must_block) {
+      if (auth) auth->release_auth(read);
+      pthread_mutex_unlock(&master_lock);
       return -1;
     }
     if (read) {
-      int new_counter = ++counter;
+      //get a read lock
+      ++readers_waiting;
+      //NOTE: 'auth' is expected to prevent a deadlock if the caller already has
+      //a read lock and there is a writer waiting
+      while (writer || writer_waiting) {
+        if (pthread_cond_wait(&read_wait, &master_lock) != 0) {
+          if (auth) auth->release_auth(read);
+          --readers_waiting;
+          pthread_mutex_unlock(&master_lock);
+          return -1;
+        }
+      }
+      --readers_waiting;
+      int new_readers = ++readers;
       //if for some strange reason there's an overflow...
-      assert(counter > 0);
-      pthread_mutex_unlock(&counter_lock);
-      pthread_mutex_unlock(&write_lock);
-      return new_counter;
+      assert(!writer && !writer_waiting && readers > 0);
+      pthread_mutex_unlock(&master_lock);
+      return new_readers;
     } else {
-      if (block && counter) {
-        //only wait if there are currently readers and we're to block
-        assert(!write_waiting);
-        write_waiting = true;
-        //NOTE: 'counter_lock' must be locked here, but if the wait blocks then it gets unlocked
-        //(no need to check return; if it fails, 'counter' will still be non-zero because 'counter_lock' won't have unlocked)
-        pthread_cond_wait(&write_wait, &counter_lock);
-        write_waiting = false;
+      //if the caller isn't the first in line for writing, wait until it is
+      ++readers_waiting;
+      while (writer_waiting) {
+        //NOTE: use 'read_wait' here, since that's what a write unlock broadcasts on
+        //NOTE: another thread should be blocking in 'write_wait' below
+        if (pthread_cond_wait(&read_wait, &master_lock) != 0) {
+          if (auth) auth->release_auth(read);
+          --readers_waiting;
+          pthread_mutex_unlock(&master_lock);
+          return -1;
+        }
       }
-      //NOTE: must check 'counter' before unlocking 'counter_lock'!
-      if (counter) {
-        pthread_mutex_unlock(&counter_lock);
-        //failed to obtain a lock, either due to not blocking or a wait error
-        pthread_mutex_unlock(&write_lock);
-        return -1;
-      } else {
-        //'write_lock' is retained until 'unlock' is called so that no new locks can happen
-        pthread_mutex_unlock(&counter_lock);
-        return 0;
+      --readers_waiting;
+      writer_waiting = true;
+      //get a write lock
+      while (writer || readers) {
+        if (pthread_cond_wait(&write_wait, &master_lock) != 0) {
+          if (auth) auth->release_auth(read);
+          writer_waiting = false;
+          pthread_mutex_unlock(&master_lock);
+          return -1;
+        }
       }
+      writer_waiting = false;
+      writer = true;
+      pthread_mutex_unlock(&master_lock);
+      return 0;
     }
   }
 
-  int unlock(bool read) {
-    //NOTE: this must be called exactly once per lock instance!
+  int unlock(lock_auth_base *auth, bool read) {
+    if (pthread_mutex_lock(&master_lock) != 0) return -1;
+    if (auth) auth->release_auth(read);
     if (read) {
-      //this should only ever be locked for a short period of time
-      if (pthread_mutex_lock(&counter_lock) != 0) return -1;
-      assert(counter > 0);
-      int new_counter = --counter;
-      if (counter == 0 && write_waiting) pthread_cond_broadcast(&write_wait);
-      pthread_mutex_unlock(&counter_lock);
-      return new_counter;
+      assert(!writer && readers > 0);
+      int new_readers = --readers;
+      if (!new_readers && writer_waiting) {
+        pthread_cond_broadcast(&write_wait);
+      }
+      pthread_mutex_unlock(&master_lock);
+      return new_readers;
     } else {
-      //anything waiting for a lock should currently be blocking on 'write_lock'
-      return pthread_mutex_unlock(&write_lock);
+      assert(writer && !readers);
+      writer = false;
+      if (writer_waiting) {
+        pthread_cond_broadcast(&write_wait);
+      }
+      if (readers_waiting) {
+        pthread_cond_broadcast(&read_wait);
+      }
+      pthread_mutex_unlock(&master_lock);
+      return 0;
     }
   }
 
   ~rw_lock() {
-    pthread_mutex_destroy(&counter_lock);
-    pthread_mutex_destroy(&write_lock);
+    pthread_mutex_destroy(&master_lock);
+    pthread_cond_destroy(&read_wait);
     pthread_cond_destroy(&write_wait);
   }
 
 private:
-  int             counter;
-  bool            write_waiting;
-  pthread_mutex_t counter_lock, write_lock;
-  pthread_cond_t  write_wait;
+  int             readers, readers_waiting;
+  bool            writer, writer_waiting;
+  pthread_mutex_t master_lock;
+  pthread_cond_t  read_wait, write_wait;
 };
 
 
@@ -580,11 +668,17 @@ private:
   w_lock &operator = (const w_lock&);
 
 public:
-  int lock(bool /*unused*/, bool block) {
-    return ((block? pthread_mutex_lock : pthread_mutex_trylock)(&write_lock) == 0)? 0 : -1;
+  int lock(lock_auth_base *auth, bool /*unused*/, bool block) {
+    if (auth && !auth->register_auth(false, 0, 0)) return -1;
+    if ((block? pthread_mutex_lock : pthread_mutex_trylock)(&write_lock) != 0) {
+      if (auth) auth->release_auth(false);
+      return -1;
+    }
+    return 0;
   }
 
-  int unlock(bool /*unused*/) {
+  int unlock(lock_auth_base *auth, bool /*unused*/) {
+    if (auth) auth->release_auth(false);
     return (pthread_mutex_unlock(&write_lock) == 0)? 0 : -1;
   }
 
@@ -605,8 +699,9 @@ class r_lock : public lock_base {
 public:
   r_lock() : counter(0) {}
 
-  int lock(bool read, bool /*unused*/) {
+  int lock(lock_auth_base *auth, bool read, bool /*unused*/) {
     if (!read) return -1;
+    if (auth && !auth->register_auth(read, 0, 0)) return -1;
     //NOTE: this should be atomic
     int new_counter = ++counter;
     //(check the copy!)
@@ -614,8 +709,9 @@ public:
     return new_counter;
   }
 
-  int unlock(bool read) {
+  int unlock(lock_auth_base *auth, bool read) {
     if (!read) return -1;
+    if (auth) auth->release_auth(read);
     //NOTE: this should be atomic
     int new_counter = --counter;
     //(check the copy!)
@@ -624,7 +720,7 @@ public:
   }
 
 private:
-  int counter;
+  std::atomic <int> counter;
 };
 
 
@@ -633,8 +729,94 @@ private:
  */
 
 struct broken_lock : public lock_base {
-  int lock(bool /*unused*/, bool /*unused*/) { return -1; }
-  int unlock(bool /*unused*/)                { return -1; }
+  int lock(lock_auth_base* /*unused*/, bool /*unused*/, bool /*unused*/) { return -1; }
+  int unlock(lock_auth_base* /*unused*/, bool /*unused*/)                { return -1; }
+};
+
+
+/*! \class lock_auth
+    \brief Lock authorization object.
+    @see mutex_container::auth_type
+    @see mutex_container::get_new_auth
+    @see mutex_container::get_auth
+    @see mutex_container::get_auth_const
+
+    This class is used by \ref mutex_container to prevent deadlocks. To prevent
+    deadlocks, create one \ref lock_auth instance per thread, and pass it to
+    the \ref mutex_container when getting a proxy object. This will prevent the
+    thread from obtaining an new incompatible lock type when it already holds a
+    lock.
+ */
+
+template <class>
+class lock_auth : public lock_auth_base {
+public:
+  lock_auth() : used(false) {}
+
+private:
+  lock_auth(const lock_auth&);
+  lock_auth &operator = (const lock_auth&);
+
+  bool register_auth(bool /*unused*/, bool /*unused*/, bool /*unused*/) {
+    if (used) return false;
+    return (used = true);
+  }
+
+  void release_auth(bool /*unused*/) {
+    assert(used);
+    used = false;
+  }
+
+  bool used;
+};
+
+template <>
+class lock_auth <rw_lock> : public lock_auth_base {
+public:
+  lock_auth() : counter(0), write(false) {}
+
+private:
+  lock_auth(const lock_auth&);
+  lock_auth &operator = (const lock_auth&);
+
+  bool register_auth(bool Read, bool ReadWait, bool WriteWait) {
+    if (write) return false;
+    //reject if this thread is blocking writers
+    if (counter && (WriteWait || !Read)) return false;
+    if (Read) {
+      ++counter;
+      assert(counter > 0);
+    } else {
+      if (counter) return false;
+      write = true;
+    }
+    return true;
+  }
+
+  void release_auth(bool Read) {
+    if (Read) {
+      assert(counter && !write);
+      --counter;
+    } else {
+      assert(write && !counter);
+      write = false;
+    }
+  }
+
+  int  counter;
+  bool write;
+};
+
+template <>
+class lock_auth <r_lock> : public lock_auth_base {
+  bool register_auth(bool Read, bool /*unused*/, bool /*unused*/) { return Read; }
+  void release_auth(bool Read) { assert(Read); }
+};
+
+template <>
+class lock_auth <broken_lock> : public lock_auth_base {
+  bool register_auth(bool /*unused*/, bool /*unused*/, bool /*unused*/) { return false; }
+  void release_auth(bool /*unused*/) { assert(false); }
 };
 
 #endif //mutex_container_hpp

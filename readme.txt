@@ -16,6 +16,19 @@ thread to read or write at a time, but it should be more efficient when you
 never want to allow multiple threads access to the container at one time. A
 third type of lock allows multiple readers, but no writers.
 
+This container also supports deadlock prevention via authorization objects. The
+basic idea is that each thread creates its own authorization object that will
+keep track of the locks held by the thread. This will prevent deadlocks, at the
+possible expense of being overly-cautious with lock rejection, by rejecting a
+lock request if it's possible for a deadlock, even when working with multiple
+containers. Each lock type has a corresponding authorization object type that
+mirrors the lock type's behavior. (For example, some authorization objects allow
+a thread to hold multiple read locks, whereas others only allow a single read
+lock. None of them allow a thread to hold multiple write locks.) It is important
+to note that the authorization objects don't track which containers the thread
+holds a lock for! From the perspective of authorization, attempting to lock a
+second container is the same as attempting to lock the same container again.
+
 See test.cpp for an example. You might also want to compile/run it to make sure
 that it works properly on the target system.
 

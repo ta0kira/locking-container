@@ -74,6 +74,11 @@ static void *thread(void *nv) {
   //(cancelation can be messy...)
   if (pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL) != 0) return NULL;
 
+  //get an authorization object, to prevent deadlocks
+  //NOTE: you should only use the authorization with another container that has
+  //the same lock type!
+  protected_int::auth_type auth(my_data.get_new_auth());
+
   long n = (long) nv;
   struct timespec wait = { 0, (10 + n) * 10 * 1000 * 1000 };
   nanosleep(&wait, NULL);
@@ -85,13 +90,14 @@ static void *thread(void *nv) {
 
     for (int i = 0; i < THREADS + n; i++) {
       send_output(stdout2, "?read %li\n", n);
-      protected_int::const_proxy read = my_data.get_const(READ_BLOCK);
+      protected_int::const_proxy read = my_data.get_auth_const(auth.get(), READ_BLOCK);
       if (!read) {
         send_output(stdout2, "!read %li\n", n);
         return NULL;
       }
 
       send_output(stdout2, "+read %li (%i) -> %i\n", n, read.last_lock_count(), *read);
+      send_output(stdout2, "@read %li %i\n", n, !!my_data.get_auth_const(auth.get(), READ_BLOCK));
       if (*read < 0) return NULL;
       nanosleep(&wait, NULL);
 
@@ -103,13 +109,14 @@ static void *thread(void *nv) {
     //write once
 
     send_output(stdout2, "?write %li\n", n);
-    protected_int::proxy write = my_data.get(WRITE_BLOCK);
+    protected_int::proxy write = my_data.get_auth(auth.get(), WRITE_BLOCK);
     if (!write) {
       send_output(stdout2, "!write %li\n", n);
       return NULL;
     }
 
     send_output(stdout2, "+write %li (%i)\n", n, write.last_lock_count());
+    send_output(stdout2, "@write %li %i\n", n, !!my_data.get_auth(auth.get(), WRITE_BLOCK));
     if (*write < 0) return NULL;
     *write = n;
     nanosleep(&wait, NULL);
