@@ -62,6 +62,9 @@ int main()
 static void send_output(protected_out &out, const char *format, ...) {
   va_list ap;
   va_start(ap, format);
+  //NOTE: authorization isn't important here because it's not possible for the
+  //caller to lock another container while it holds a lock on 'out'; deadlocks
+  //aren't an issue with respect to 'out'
   protected_out::proxy write = out.get();
   if (!write) return;
   vfprintf(*write, format, ap);
