@@ -101,7 +101,19 @@ struct mutex_container_base {
   }
 
   virtual const_proxy get_const(bool Block = true) const {
-    return this->get_auth(NULL, Block);
+    return this->get_auth_const(NULL, Block);
+  }
+
+  inline proxy get_auth(auth_type &Authorization, bool Block = true) {
+    return this->get_auth(Authorization.get(), Block);
+  }
+
+  inline const_proxy get_auth(auth_type &Authorization, bool Block = true) const {
+    return this->get_auth(Authorization.get(), Block);
+  }
+
+  inline const_proxy get_auth_const(auth_type &Authorization, bool Block = true) const {
+    return this->get_auth_const(Authorization.get(), Block);
   }
 
   virtual proxy       get_auth(lock_auth_base *Authorization, bool Block = true)             = 0;
@@ -142,6 +154,9 @@ public:
   using typename base::proxy;
   using typename base::const_proxy;
   using typename base::auth_type;
+  //NOTE: this is needed so that the 'lock_auth_base' variants are pulled in
+  using base::get_auth;
+  using base::get_auth_const;
 
   /*! \brief Constructor.
    *
