@@ -86,4 +86,8 @@ int main() {
 
   assert(read);
   read.clear();
+
+  //use 'try_copy_container' to copy containers (attempts to lock both containers)
+  bool success = try_copy_container(data0, data1, auth);
+  assert(success);
 }

@@ -269,4 +269,80 @@ private:
   Lock locks;
 };
 
+
+/*! \brief Attempt to copy one container's contents into another.
+ *
+ * @note This will attempt to obtain locks for both objects, and will fail if
+ * either lock operation fails.
+ *
+ * \param Left container being assigned to
+ * \param Right container being assigned
+ * \param Authorization authorization object
+ * \param Block whether or not to block when locking the containers
+ * \return success or failure, based entirely on locking success
+ */
+template <class Type1, class Type2>
+inline bool try_copy_container(locking_container_base <Type1> &Left,
+  locking_container_base <Type2> &Right, lock_auth_base *Authorization,
+  bool Block = true) {
+  typename locking_container_base <Type1> ::proxy write = Left.get_auth(Authorization, Block);
+  if (!write) return false;
+  typename locking_container_base <Type2> ::const_proxy read = Right.get_auth_const(Authorization, Block);
+  if (!read) return false;
+  *write = *read;
+  return true;
+}
+
+
+/*! Attempt to copy one container's contents into another.*/
+template <class Type1, class Type2>
+inline bool try_copy_container(locking_container_base <Type1> &Left,
+  locking_container_base <Type2> &Right, bool Block = true) {
+  return try_copy_container(Left, Right, NULL, Block);
+}
+
+
+/*! Attempt to copy one container's contents into another.*/
+template <class Type1, class Type2>
+inline bool try_copy_container(locking_container_base <Type1> &Left,
+  locking_container_base <Type2> &Right, lock_auth_base::auth_type &Authorization,
+  bool Block = true) {
+  return try_copy_container(Left, Right, Authorization.get(), Block);
+}
+
+/*! \brief Attempt to copy one container's contents into another.
+ *
+ * @note This will attempt to get a write lock for the multi-lock object, and
+ * also locks for both objects. This will fail if any of lock operation fails.
+ * Specifically, this will fail if the auth. object holds any other locks.
+ *
+ * \param Left container being assigned to
+ * \param Right container being assigned
+ * \param Multi multi-lock tracking object
+ * \param Authorization authorization object
+ * \param Block whether or not to block when locking the containers
+ * \return success or failure, based entirely on locking success
+ */
+template <class Type1, class Type2>
+inline bool try_copy_container(locking_container_base <Type1> &Left,
+  locking_container_base <Type2> &Right, null_container_base &Multi,
+  lock_auth_base *Authorization, bool Block = true) {
+  null_container_base::proxy multi = Multi.get_auth(Authorization);
+  if (!multi) return false;
+  typename locking_container_base <Type1> ::proxy write = Left.get_auth(Authorization, Block);
+  if (!write) return false;
+  typename locking_container_base <Type2> ::const_proxy read = Right.get_auth_const(Authorization, Block);
+  if (!read) return false;
+  *write = *read;
+  return true;
+}
+
+/*! Attempt to copy one container's contents into another.*/
+template <class Type1, class Type2>
+inline bool try_copy_container(locking_container_base <Type1> &Left,
+  locking_container_base <Type2> &Right, null_container_base &Multi,
+  lock_auth_base::auth_type &Authorization, bool Block = true) {
+  return try_copy_container(Left, Right, Multi, Authorization.get(), Block);
+}
+
 #endif //locking_container_hpp
