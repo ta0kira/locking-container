@@ -1,5 +1,5 @@
-/* This is a very simple example of the semantics of 'mutex_container'. For a
- * non-trivial example, see 'test.cpp'.
+/* This is a very simple example of the semantics of 'locking_container'. For a
+ * non-trivial example, see test.cpp.
  *
  * Compile this program enabling C++11, and linking with libpthread if needed.
  * When you run this program, you should see no output or errors. An assertion
@@ -8,15 +8,15 @@
 
 #include <assert.h>
 
-#include "mutex-container.hpp"
+#include "locking-container.hpp"
 
 
 int main() {
   //default: use 'rw_lock'
-  typedef mutex_container <int> protected_int0;
+  typedef locking_container <int> protected_int0;
 
   //use 'r_lock' instead
-  typedef mutex_container <int, r_lock> protected_int1;
+  typedef locking_container <int, r_lock> protected_int1;
 
   //the two types above share the same base class because they both protect 'int'
   typedef protected_int0::base base;

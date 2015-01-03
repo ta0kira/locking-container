@@ -2,13 +2,12 @@ Please note that this is only designed for POSIX systems (e.g., Linux, OS X,
 and FreeBSD)! This almost certainly won't even compile for other system types.
 It also requires a compiler that supports C++11 features.
 
-The header mutex-container.hpp contains the class 'mutex_container', which is a
-template that protects a single object using mutexes. The contents of the
-container are only available via proxy objects that ensure that the container
-is locked and unlocked properly. The main purpose of the container is to
-mitigate accidental failure to unlock the container when a thread is finished
-using it. A secondary objective is to isolate the locking logic from the
-container logic.
+The header locking-container.hpp contains the class 'locking_container', which
+is a template that protects a single object. The contents of the container are
+only available via proxy objects that ensure that the container is locked and
+unlocked properly. The main purpose of the container is to mitigate accidental
+failure to unlock the container when a thread is finished using it. A secondary
+objective is to isolate the locking logic from the container logic.
 
 There are a few lock types available. The default lock type allows multiple
 threads to read from the container at once, but to write to the container the
@@ -31,6 +30,6 @@ holds a lock for! From the perspective of authorization, attempting to lock a
 second container is the same as attempting to lock the same container again.
 
 See simple.cpp for an example. You might also want to compile/run test.cpp to
-make sure that 'mutex_container' works properly on the target system.
+make sure that 'locking_container' works properly on the target system.
 
 Kevin P. Barry [ta0kira@gmail.com], 20150101

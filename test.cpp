@@ -6,7 +6,7 @@
 #include <stdarg.h>
 #include <pthread.h>
 
-#include "mutex-container.hpp"
+#include "locking-container.hpp"
 
 //(probably better as arguments, but I'm too lazy right now)
 #define THREADS 10
@@ -17,7 +17,7 @@
 
 
 //the data being protected (initialize the 'int' to 'THREADS')
-typedef mutex_container <int> protected_int;
+typedef locking_container <int> protected_int;
 static protected_int my_data(THREADS);
 
 static void send_output(const char *format, ...);
@@ -58,7 +58,7 @@ int main()
 //a print function that ensures we have exclusive access to the output
 static void send_output(const char *format, ...) {
   //protect the output file while we're at it
-  typedef mutex_container <FILE*, w_lock> protected_out;
+  typedef locking_container <FILE*, w_lock> protected_out;
   //(this is local so that it can't be involved in a deadlock)
   static protected_out stdout2(stdout);
 

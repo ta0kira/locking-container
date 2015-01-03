@@ -1,4 +1,4 @@
-/* Container that returns a mutex-locking proxy
+/* Container with automatic unlocking, concurrent reads, and deadlock prevention
  * (c) 2014-2015, Kevin P. Barry [ta0kira@gmail.com]
  *
  *
@@ -9,7 +9,7 @@
  * object is via a proxy object that keeps the mutex locked until the proxy
  * destructs.
  *
- * This header contains one main class 'mutex_container <class, class>', where
+ * This header contains one main class 'locking_container <class, class>', where
  * the first argument is the type of object being protected, and the second is
  * the type of lock to be used. A few lock choices are provided:
  *
@@ -36,25 +36,25 @@
  *
  *   - You might need to link your executable with libpthread after compiling.
  *
- *   - The assignment operators for 'mutex_container' can cause assertions if
+ *   - The assignment operators for 'locking_container' can cause assertions if
  *     the mutex can't be locked. The assignment operators are too useful to
  *     eliminate, and assertions seem to be the only logical behavior, with the
  *     other choice being silent failure to assign.
  */
 
 
-/*! \file mutex-container.hpp
+/*! \file locking-container.hpp
  *  \author Kevin P. Barry
  *  \brief Mutex-protected Container Class.
  *
  * The class in this header is used to protect objects with a mutex. The class
  * provides access via a proxy object that locks the mutex upon construction and
  * unlocks it upon the destruction of the last reference (see
- * \ref mutex_container::get.)
+ * \ref locking_container::get.)
  */
 
-#ifndef mutex_container_hpp
-#define mutex_container_hpp
+#ifndef locking_container_hpp
+#define locking_container_hpp
 
 #include <atomic>
 #include <memory>
@@ -85,14 +85,14 @@ private:
 };
 
 
-/*! \class mutex_container_base
-    \brief Base class for \ref mutex_container.
+/*! \class locking_container_base
+    \brief Base class for \ref locking_container.
  */
 
 template <class> class mutex_proxy;
 
 template <class Type>
-struct mutex_container_base {
+struct locking_container_base {
   typedef Type                             type;
   typedef mutex_proxy <type>               proxy;
   typedef mutex_proxy <const type>         const_proxy;
@@ -121,16 +121,16 @@ struct mutex_container_base {
     return auth_type();
   }
 
-  virtual inline ~mutex_container_base() {}
+  virtual inline ~locking_container_base() {}
 };
 
 
-/*! \class mutex_container
+/*! \class locking_container
     \brief Container to protect an object with a mutex.
 
     Each instance of this class contains a mutex and an encapsulated object of
-    the type denoted by the template parameter. The \ref mutex_container::get
-    and \ref mutex_container::get_const functions provide a proxy object (see
+    the type denoted by the template parameter. The \ref locking_container::get
+    and \ref locking_container::get_const functions provide a proxy object (see
     \ref mutex_proxy) that automatically locks and unlocks the mutex to simplify
     code that accesses the encapsulated object.
     \attention This class contains a mutable member, which means that a memory
@@ -142,12 +142,12 @@ class rw_lock;
 template <class> class lock_auth;
 
 template <class Type, class Lock = rw_lock>
-class mutex_container : public mutex_container_base <Type> {
+class locking_container : public locking_container_base <Type> {
 private:
   typedef lock_auth <Lock> auth_base_type;
 
 public:
-  typedef mutex_container_base <Type> base;
+  typedef locking_container_base <Type> base;
   using typename base::type;
   using typename base::proxy;
   using typename base::const_proxy;
@@ -160,7 +160,7 @@ public:
    *
    * \param Object Object to copy as contained object.
    */
-  explicit mutex_container(const type &Object = type()) : contained(Object) {}
+  explicit locking_container(const type &Object = type()) : contained(Object) {}
 
   /*! \brief Copy constructor.
    *
@@ -168,12 +168,12 @@ public:
    * \attention This function will block if the mutex for "Copy" is
    * locked.
    */
-  explicit __attribute__ ((deprecated)) mutex_container(const mutex_container &Copy) : contained() {
+  explicit __attribute__ ((deprecated)) locking_container(const locking_container &Copy) : contained() {
     auto_copy(Copy, contained);
   }
 
   /*! Generalized version of copy constructor.*/
-  explicit __attribute__ ((deprecated)) mutex_container(const base &Copy) : contained() {
+  explicit __attribute__ ((deprecated)) locking_container(const base &Copy) : contained() {
     auto_copy(Copy, contained);
   }
 
@@ -188,21 +188,21 @@ public:
    *
    * \return *this
    */
-  mutex_container __attribute__ ((deprecated)) &operator = (const mutex_container &Copy) {
+  locking_container __attribute__ ((deprecated)) &operator = (const locking_container &Copy) {
     if (&Copy == this) return *this; //(prevents deadlock when copying self)
     return this->operator = (static_cast <const base&> (Copy));
   }
 
-  /*! Generalized version of \ref mutex_container::operator=.*/
-  mutex_container __attribute__ ((deprecated)) &operator = (const base &Copy) {
+  /*! Generalized version of \ref locking_container::operator=.*/
+  locking_container __attribute__ ((deprecated)) &operator = (const base &Copy) {
     proxy self = this->get();
     assert(self);
     if (!auto_copy(Copy, *self)) assert(NULL);
     return *this;
   }
 
-  /*! Object version of \ref mutex_container::operator=.*/
-  mutex_container __attribute__ ((deprecated)) &operator = (const Type &Object) {
+  /*! Object version of \ref locking_container::operator=.*/
+  locking_container __attribute__ ((deprecated)) &operator = (const Type &Object) {
     proxy self = this->get();
     assert(self);
     *self = Object;
@@ -213,7 +213,7 @@ public:
    *
    * \attention This will block if the mutex is locked.
    */
-  ~mutex_container() {
+  ~locking_container() {
     proxy self = this->get();
   }
 
@@ -234,7 +234,7 @@ public:
    * invalid if a mutex lock hasn't been obtained.
    * \attention The returned object should only be passed by value, and it
    * should only be passed within the same thread that
-   * \ref mutex_container::get was called from. This is because the proxy
+   * \ref locking_container::get was called from. This is because the proxy
    * object uses reference counting that isn't reentrant.
    * \param Authorization Authorization object to prevent deadlocks.
    * \param Block Should the call block for a mutex lock?
@@ -246,7 +246,7 @@ public:
     return proxy(&contained, &locks, Authorization, Block);
   }
 
-  /*! Const version of \ref mutex_container::get.*/
+  /*! Const version of \ref locking_container::get.*/
   inline const_proxy get_auth_const(lock_auth_base *Authorization, bool Block = true) const {
     return const_proxy(&contained, &locks, Authorization, true, Block);
   }
@@ -255,7 +255,7 @@ public:
 
   /*! Get a new authorization object.*/
   virtual auth_type get_new_auth() const {
-    return mutex_container::new_auth();
+    return locking_container::new_auth();
   }
 
   /*! Get a new authorization object.*/
@@ -372,11 +372,11 @@ private:
 
 
 /*! \class mutex_proxy
-    \brief Proxy object for \ref mutex_container access.
+    \brief Proxy object for \ref locking_container access.
 
-    Instances of this class are returned by \ref mutex_container instances as
+    Instances of this class are returned by \ref locking_container instances as
     proxy objects that access the contained object. The mutex of the
-    \ref mutex_container is locked upon return of this object and references to
+    \ref locking_container is locked upon return of this object and references to
     the returned object are counted as it's copied. Upon destruction of the last
     reference the mutex is unlocked.
  */
@@ -384,7 +384,7 @@ private:
 template <class Type>
 class mutex_proxy : public mutex_proxy_base <Type> {
 private:
-  template <class, class> friend class mutex_container;
+  template <class, class> friend class locking_container;
 
   mutex_proxy(Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth, bool block) :
     mutex_proxy_base <Type> (new_pointer, new_locks, new_auth, false, block) {}
@@ -464,7 +464,7 @@ public:
 template <class Type>
 class mutex_proxy <const Type> : public mutex_proxy_base <const Type> {
 private:
-  template <class, class> friend class mutex_container;
+  template <class, class> friend class locking_container;
 
   mutex_proxy(const Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth, bool read, bool block) :
     mutex_proxy_base <const Type> (new_pointer, new_locks, new_auth, read, block) {}
@@ -750,16 +750,16 @@ struct broken_lock : public lock_base {
 
 /*! \class lock_auth
     \brief Lock authorization object.
-    @see mutex_container::auth_type
-    @see mutex_container::get_new_auth
-    @see mutex_container::get_auth
-    @see mutex_container::get_auth_const
+    @see locking_container::auth_type
+    @see locking_container::get_new_auth
+    @see locking_container::get_auth
+    @see locking_container::get_auth_const
 
-    This class is used by \ref mutex_container to prevent deadlocks. To prevent
-    deadlocks, create one \ref lock_auth instance per thread, and pass it to
-    the \ref mutex_container when getting a proxy object. This will prevent the
-    thread from obtaining an new incompatible lock type when it already holds a
-    lock.
+    This class is used by \ref locking_container to prevent deadlocks. To
+    prevent deadlocks, create one \ref lock_auth instance per thread, and pass
+    it to the \ref locking_container when getting a proxy object. This will
+    prevent the thread from obtaining an new incompatible lock type when it
+    already holds a lock.
  */
 
 template <class>
@@ -864,4 +864,4 @@ private:
   void release_auth(bool /*unused*/) { assert(false); }
 };
 
-#endif //mutex_container_hpp
+#endif //locking_container_hpp
