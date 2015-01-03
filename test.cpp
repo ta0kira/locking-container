@@ -229,6 +229,9 @@ static void *thread_multi(void *nv) {
     //'get_multi_const' using 'multi_lock). this is mostly a way to appease
     //'auth', because it's preventing deadlocks.
 
+    //NOTE: the lock will be rejected without blocking if this thread holds a
+    //lock on another object, because a deadlock could otherwise happen!
+
     send_output("?multi0 %li\n", n);
     null_container::proxy multi = multi_lock.get_auth(auth);
     if (!multi) {
