@@ -123,7 +123,7 @@ static void *thread(void *nv) {
       send_output("+read %li (%i) -> %i\n", n, read.last_lock_count(), *read);
       send_output("@read %li %i\n", n, !!my_data.get_auth_const(auth, READ_BLOCK));
       if (*read < 0) {
-      send_output("counter %li %i\n", n, counter);
+        send_output("counter %li %i\n", n, counter);
         return NULL;
       }
       //(sort of like a contest, to see how many times each thread reads its own number)
@@ -253,6 +253,10 @@ static void *thread_multi(void *nv) {
     }
     send_output("+multi1 %li\n", n);
     if (*write1 < 0) return NULL;
+
+    //NOTE: this second write lock is only possible because this thread's write
+    //lock on 'multi_lock' ensures that nothing else currently holds a lock on
+    //'my_data2'. in fact, that's the only purpose of using 'multi_lock'!
 
     send_output("?multi2 %li\n", n);
     protected_int::proxy write2 = my_data2.get_auth(auth);
