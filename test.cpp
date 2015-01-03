@@ -17,7 +17,7 @@
 #include "locking-container.hpp"
 
 //use this definition if you want the simple test
-#define THREAD_TYPE thread_multi
+#define THREAD_TYPE thread
 //use this definition if you want the multi-lock test
 //#define THREAD_TYPE thread_multi
 
