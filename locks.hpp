@@ -2,6 +2,7 @@
 #define locks_hpp
 
 #include <atomic>
+#include <memory>
 
 #include <assert.h>
 #include <pthread.h>
@@ -16,6 +17,8 @@ class lock_base;
 
 class lock_auth_base {
 public:
+  typedef std::shared_ptr <lock_auth_base> auth_type;
+
   virtual bool lock_allowed(bool Read, bool Block = true) const = 0;
 
   virtual inline ~lock_auth_base() {}

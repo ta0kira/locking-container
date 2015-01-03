@@ -73,10 +73,11 @@
  *
  *   - You might need to link your executable with libpthread after compiling.
  *
- *   - The assignment operators for 'locking_container' can cause assertions if
- *     the container can't be locked. The assignment operators should therefore
- *     only be used if there is no logical behavior other than an assertion if
- *     assignment fails.
+ *   - To copy a container, you must first get a proxy from it, then construct
+ *     the copy with the corresponding object. To assign one container to
+ *     another, you must first get proxies to both objects. Because of this,
+ *     you cannot copy a 'const' container because there is no 'const' way to
+ *     get a proxy.
  */
 
 
@@ -103,16 +104,16 @@
 template <class Type>
 class locking_container_base {
 public:
-  typedef Type                             type;
-  typedef object_proxy <type>              proxy;
-  typedef object_proxy <const type>        const_proxy;
-  typedef std::shared_ptr <lock_auth_base> auth_type;
+  typedef Type                      type;
+  typedef object_proxy <type>       proxy;
+  typedef object_proxy <const type> const_proxy;
+  typedef lock_auth_base::auth_type auth_type;
 
   inline proxy get(bool Block = true) {
     return this->get_auth(NULL, Block);
   }
 
-  inline const_proxy get_const(bool Block = true) const {
+  inline const_proxy get_const(bool Block = true) {
     return this->get_auth_const(NULL, Block);
   }
 
@@ -120,19 +121,19 @@ public:
     return this->get_auth(Authorization.get(), Block);
   }
 
-  inline const_proxy get_auth_const(auth_type &Authorization, bool Block = true) const {
+  inline const_proxy get_auth_const(auth_type &Authorization, bool Block = true) {
     return this->get_auth_const(Authorization.get(), Block);
   }
 
-  virtual proxy       get_auth(lock_auth_base *Authorization, bool Block = true)             = 0;
-  virtual const_proxy get_auth_const(lock_auth_base *Authorization, bool Block = true) const = 0;
+  virtual proxy       get_auth(lock_auth_base *Authorization, bool Block = true)       = 0;
+  virtual const_proxy get_auth_const(lock_auth_base *Authorization, bool Block = true) = 0;
 
   inline proxy get_multi(null_container_base &Multi, lock_auth_base *Authorization, bool Block = true) {
     return this->get_multi(Multi.get_lock_object(), Authorization, Block);
   }
 
   inline const_proxy get_multi_const(null_container_base &Multi,
-    lock_auth_base *Authorization, bool Block = true) const {
+    lock_auth_base *Authorization, bool Block = true) {
     return this->get_multi_const(Multi.get_lock_object(), Authorization, Block);
   }
 
@@ -142,13 +143,15 @@ public:
   }
 
   inline const_proxy get_multi_const(null_container_base &Multi,
-    auth_type &Authorization, bool Block = true) const {
+    auth_type &Authorization, bool Block = true) {
     return this->get_multi_const(Multi, Authorization.get(), Block);
   }
 
   virtual auth_type get_new_auth() const {
     return auth_type();
   }
+
+  virtual inline ~locking_container_base() {}
 
 protected:
   virtual proxy get_multi(lock_base */*Multi*/, lock_auth_base */*Authorization*/,
@@ -157,11 +160,9 @@ protected:
   }
 
   virtual const_proxy get_multi_const(lock_base */*Multi*/, lock_auth_base */*Authorization*/,
-    bool /*Block*/) const {
+    bool /*Block*/) {
     return const_proxy();
   }
-
-  virtual inline ~locking_container_base() {}
 };
 
 
@@ -174,9 +175,6 @@ protected:
     and \ref locking_container::get_const functions provide a proxy object (see
     \ref object_proxy) that automatically locks and unlocks the lock to simplify
     code that accesses the encapsulated object.
-    \attention This class contains a mutable member, which means that a memory
-    page containing even a const instance should not be remapped as read-only.
-    \note This is not a "container" in the STL sense.
  */
 
 template <class Type, class Lock = rw_lock>
@@ -202,52 +200,11 @@ public:
    */
   explicit locking_container(const type &Object = type()) : contained(Object) {}
 
-  /*! \brief Copy constructor.
-   *
-   * \param Copy Instance to copy.
-   * \attention This function will block if "Copy" is locked.
-   */
-  explicit __attribute__ ((deprecated)) locking_container(const locking_container &Copy) : contained() {
-    auto_copy(Copy, contained);
-  }
+private:
+  locking_container(const locking_container&);
+  locking_container &operator = (const locking_container&);
 
-  /*! Generalized version of copy constructor.*/
-  explicit __attribute__ ((deprecated)) locking_container(const base &Copy) : contained() {
-    auto_copy(Copy, contained);
-  }
-
-  /*! \brief Assignment operator.
-   *
-   * \param Copy Instance to copy.
-   * \attention This function will block if the lock for either object is
-   * locked. The lock for "Copy" is locked first, then the lock for this object.
-   * The lock for "Copy" will remain locked until the locking of the lock for
-   * this object is either succeeds or fails.
-   * \attention This will cause an assertion if the lock can't be locked.
-   *
-   * \return *this
-   */
-  locking_container __attribute__ ((deprecated)) &operator = (const locking_container &Copy) {
-    if (&Copy == this) return *this; //(prevents deadlock when copying self)
-    return this->operator = (static_cast <const base&> (Copy));
-  }
-
-  /*! Generalized version of \ref locking_container::operator=.*/
-  locking_container __attribute__ ((deprecated)) &operator = (const base &Copy) {
-    proxy self = this->get();
-    assert(self);
-    if (!auto_copy(Copy, *self)) assert(NULL);
-    return *this;
-  }
-
-  /*! Object version of \ref locking_container::operator=.*/
-  locking_container __attribute__ ((deprecated)) &operator = (const Type &Object) {
-    proxy self = this->get();
-    assert(self);
-    *self = Object;
-    return *this;
-  }
-
+public:
   /*! \brief Destructor.
    *
    * \attention This will block if the container is locked.
@@ -281,7 +238,7 @@ public:
   }
 
   /*! Const version of \ref locking_container::get.*/
-  inline const_proxy get_auth_const(lock_auth_base *Authorization, bool Block = true) const {
+  inline const_proxy get_auth_const(lock_auth_base *Authorization, bool Block = true) {
     return this->get_multi_const(NULL, Authorization, Block);
   }
 
@@ -304,7 +261,7 @@ private:
   }
 
   inline const_proxy get_multi_const(lock_base *Multi, lock_auth_base *Authorization,
-    bool Block = true) const {
+    bool Block = true) {
     return const_proxy(&contained, &locks, Authorization, true, Block, Multi);
   }
 
@@ -315,8 +272,8 @@ private:
     return true;
   }
 
-  type         contained;
-  mutable Lock locks;
+  type contained;
+  Lock locks;
 };
 
 #endif //locking_container_hpp

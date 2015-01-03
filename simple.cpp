@@ -31,7 +31,7 @@ int main() {
 
   //authorization object to prevent deadlocks (one per thread)
   //NOTE: this will correspond to 'rw_lock', since that's what 'protected_int0' uses
-  protected_int0::auth_type auth(protected_int0::new_auth());
+  lock_auth_base::auth_type auth(protected_int0::new_auth());
   //make sure an authorization was provided
   assert(auth);
 

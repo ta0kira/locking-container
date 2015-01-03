@@ -7,6 +7,19 @@
  */
 
 class null_container_base {
+public:
+  typedef object_proxy <void>       proxy;
+  typedef lock_auth_base::auth_type auth_type;
+
+  virtual proxy get_auth(auth_type &Authorization, bool Block = true) {
+    return this->get_auth(Authorization.get(), Block);
+  }
+
+  virtual proxy get_auth(lock_auth_base *Authorization, bool Block = true) = 0;
+
+  virtual inline ~null_container_base() {}
+
+private:
   template <class> friend class locking_container_base;
   virtual lock_base *get_lock_object() = 0;
 };
@@ -21,8 +34,9 @@ private:
   typedef lock_auth <rw_lock> auth_base_type;
 
 public:
-  typedef object_proxy <void>              proxy;
-  typedef std::shared_ptr <lock_auth_base> auth_type;
+  typedef null_container_base base;
+  using base::proxy;
+  using base::auth_type;
 
   ~null_container() {
     this->get_auth(NULL);
@@ -41,7 +55,7 @@ private:
     return &locks;
   }
 
-  mutable rw_lock locks;
+  rw_lock locks;
 };
 
 #endif //null_container_hpp
