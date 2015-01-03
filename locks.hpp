@@ -216,6 +216,44 @@ private:
 };
 
 
+/*! \class r_lock
+    \brief Lock object that allows multiple readers but no writers.
+ */
+
+class r_lock : public lock_base {
+public:
+  r_lock() : counter(0) {}
+
+private:
+  r_lock(const r_lock&);
+  r_lock &operator = (const r_lock&);
+
+public:
+  int lock(lock_auth_base *auth, bool read, bool /*block*/ = true, bool test = false) {
+    if (!read) return -1;
+    if (!register_auth(auth, read, false, false, test)) return -1;
+    //NOTE: this should be atomic
+    int new_counter = ++counter;
+    //(check the copy!)
+    assert(new_counter > 0);
+    return new_counter;
+  }
+
+  int unlock(lock_auth_base *auth, bool read, bool test = false) {
+    if (!read) return -1;
+    if (!test) release_auth(auth, read);
+    //NOTE: this should be atomic
+    int new_counter = --counter;
+    //(check the copy!)
+    assert(new_counter >= 0);
+    return new_counter;
+  }
+
+private:
+  std::atomic <int> counter;
+};
+
+
 /*! \class w_lock
     \brief Lock object that allows only one thread access at a time.
  */
@@ -257,44 +295,6 @@ public:
 private:
   bool locked;
   pthread_mutex_t write_lock;
-};
-
-
-/*! \class r_lock
-    \brief Lock object that allows multiple readers but no writers.
- */
-
-class r_lock : public lock_base {
-public:
-  r_lock() : counter(0) {}
-
-private:
-  r_lock(const r_lock&);
-  r_lock &operator = (const r_lock&);
-
-public:
-  int lock(lock_auth_base *auth, bool read, bool /*block*/ = true, bool test = false) {
-    if (!read) return -1;
-    if (!register_auth(auth, read, false, false, test)) return -1;
-    //NOTE: this should be atomic
-    int new_counter = ++counter;
-    //(check the copy!)
-    assert(new_counter > 0);
-    return new_counter;
-  }
-
-  int unlock(lock_auth_base *auth, bool read, bool test = false) {
-    if (!read) return -1;
-    if (!test) release_auth(auth, read);
-    //NOTE: this should be atomic
-    int new_counter = --counter;
-    //(check the copy!)
-    assert(new_counter >= 0);
-    return new_counter;
-  }
-
-private:
-  std::atomic <int> counter;
 };
 
 

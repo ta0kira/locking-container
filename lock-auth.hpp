@@ -61,8 +61,13 @@ class lock_auth <rw_lock> : public lock_auth_base {
 public:
   lock_auth() : reading(0), writing(0) {}
 
-  virtual int reading_count() const { return reading; }
-  virtual int writing_count() const { return writing; }
+  int reading_count() const { return reading; }
+  int writing_count() const { return writing; }
+
+  ~lock_auth() {
+    //NOTE: this can't be in '~lock_auth_base'!
+    assert(!this->reading_count() && !this->writing_count());
+  }
 
 private:
   lock_auth(const lock_auth&);
@@ -103,8 +108,14 @@ class lock_auth <r_lock> : public lock_auth_base {
 public:
   lock_auth() : reading(0) {}
 
-  virtual int  reading_count() const { return reading; }
-  virtual bool always_read()   const { return true; }
+  int  reading_count() const { return reading; }
+  bool always_read()   const { return true; }
+
+  ~lock_auth() {
+    //NOTE: this can't be in '~lock_auth_base'!
+    //NOTE: no point checking 'writing_count', since it's overrides will be ignored here
+    assert(!this->reading_count());
+  }
 
 private:
   bool register_auth(bool Read, bool LockOut, bool /*InUse*/, bool TestAuth) {
@@ -130,8 +141,14 @@ class lock_auth <w_lock> : public lock_auth_base {
 public:
   lock_auth() : writing(0) {}
 
-  virtual int  writing_count() const { return writing; }
-  virtual bool always_write()  const { return true; }
+  int  writing_count() const { return writing; }
+  bool always_write()  const { return true; }
+
+  ~lock_auth() {
+    //NOTE: this can't be in '~lock_auth_base'!
+    //NOTE: no point checking 'reading_count', since it's overrides will be ignored here
+    assert(!this->writing_count());
+  }
 
 private:
   lock_auth(const lock_auth&);
