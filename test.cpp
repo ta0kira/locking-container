@@ -252,7 +252,7 @@ static void *thread_multi(void *nv) {
     //get a write lock on 'multi_lock'. this blocks until all other locks have
     //been released (provided they were obtained with 'get_multi' or
     //'get_multi_const' using 'multi_lock). this is mostly a way to appease
-    //'auth', because it's preventing deadlocks.
+    //'auth', because 'auth' causes failure when a deadlock is possible.
 
     //NOTE: the lock will be rejected without blocking if this thread holds a
     //lock on another object, because a deadlock could otherwise happen!
@@ -271,7 +271,7 @@ static void *thread_multi(void *nv) {
 
     //NOTE: even if the auth. type is 'lock_auth <w_lock>', this thread should
     //be able to obtain multiple write locks, since the containers aren't being
-    //used by any other threads.
+    //used by any other threads (thanks to 'multi_lock').
 
     send_output("?multi1 %li\n", n);
     protected_int::proxy write1 = my_data.get_multi(multi_lock, auth);
