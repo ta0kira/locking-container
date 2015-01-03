@@ -251,8 +251,8 @@ static void *thread_multi(void *nv) {
 
     //get a write lock on 'multi_lock'. this blocks until all other locks have
     //been released (provided they were obtained with 'get_multi' or
-    //'get_multi_const' using 'multi_lock). this is mostly a way to appease
-    //'auth', because 'auth' causes failure when a deadlock is possible.
+    //'get_multi_const' using 'multi_lock'). this is mostly a way to appease
+    //'auth', because 'auth' rejects a lock when a deadlock is possible.
 
     //NOTE: the lock will be rejected without blocking if this thread holds a
     //lock on another object, because a deadlock could otherwise happen!
