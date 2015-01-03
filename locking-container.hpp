@@ -265,13 +265,6 @@ private:
     return const_proxy(&contained, &locks, Authorization, true, Block, Multi);
   }
 
-  static inline bool auto_copy(const base &copied, type &copy) {
-    typename base::const_proxy object = copied.get();
-    if (!object) return false;
-    copy = *object;
-    return true;
-  }
-
   type contained;
   Lock locks;
 };
