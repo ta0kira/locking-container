@@ -57,6 +57,16 @@
  *   - 'lock_auth <broken_lock>': This auth. type doesn't allow the caller to
  *     obtain any locks.
  *
+ * If you want both deadlock prevention and the ability for threads to hold
+ * a write lock plus one or more other locks at the same time, you can create a
+ * 'null_container' for use by all threads when obtaining locks for any object.
+ * The behavior will be transparent until a thread requests a "multi-lock" by
+ * attempting to obtain a write lock on the 'null_container'. This will block
+ * all future locks on the objects, allowing the thread in question to lock as
+ * many objects as it needs to. To access this behavior, use 'get_multi' and
+ * 'get_multi_const' instead of 'get_auth' and 'get_auth_const', passing the
+ * 'null_container' as the first argument.
+ *
  * Other notes:
  *
  *   - You must enable C++11 (or higher) when using this header.
@@ -102,8 +112,14 @@ public:
 private:
   friend class lock_base;
 
-  virtual bool register_auth(bool Read, bool Block, bool LockOut, bool InUse) = 0;
+  virtual bool register_auth(bool Read, bool Block, bool LockOut, bool InUse, bool TestAuth = false) = 0;
   virtual void release_auth(bool Read) = 0;
+};
+
+
+class null_container_base {
+  template <class> friend class locking_container_base;
+  virtual lock_base *get_lock_object() = 0;
 };
 
 
@@ -114,10 +130,11 @@ private:
 template <class> class object_proxy;
 
 template <class Type>
-struct locking_container_base {
+class locking_container_base {
+public:
   typedef Type                             type;
-  typedef object_proxy <type>               proxy;
-  typedef object_proxy <const type>         const_proxy;
+  typedef object_proxy <type>              proxy;
+  typedef object_proxy <const type>        const_proxy;
   typedef std::shared_ptr <lock_auth_base> auth_type;
 
   inline proxy get(bool Block = true) {
@@ -139,8 +156,33 @@ struct locking_container_base {
   virtual proxy       get_auth(lock_auth_base *Authorization, bool Block = true)             = 0;
   virtual const_proxy get_auth_const(lock_auth_base *Authorization, bool Block = true) const = 0;
 
+  inline proxy get_multi(null_container_base &Multi, lock_auth_base *Authorization, bool Block = true) {
+    return this->get_multi(Multi.get_lock_object(), Authorization, Block);
+  }
+
+  inline const_proxy get_multi_const(null_container_base &Multi, lock_auth_base *Authorization, bool Block = true) const {
+    return this->get_multi_const(Multi.get_lock_object(), Authorization, Block);
+  }
+
+  inline proxy get_multi(null_container_base &Multi, auth_type &Authorization, bool Block = true) {
+    return this->get_multi(Multi, Authorization.get(), Block);
+  }
+
+  inline const_proxy get_multi_const(null_container_base &Multi, auth_type &Authorization, bool Block = true) const {
+    return this->get_multi_const(Multi, Authorization.get(), Block);
+  }
+
   virtual auth_type get_new_auth() const {
     return auth_type();
+  }
+
+protected:
+  virtual proxy get_multi(lock_base */*Multi*/, lock_auth_base */*Authorization*/, bool /*Block*/) {
+    return proxy();
+  }
+
+  virtual const_proxy get_multi_const(lock_base */*Multi*/, lock_auth_base */*Authorization*/, bool /*Block*/) const {
+    return const_proxy();
   }
 
   virtual inline ~locking_container_base() {}
@@ -178,6 +220,8 @@ public:
   //NOTE: this is needed so that the 'lock_auth_base' variants are pulled in
   using base::get_auth;
   using base::get_auth_const;
+  using base::get_multi;
+  using base::get_multi_const;
 
   /*! \brief Constructor.
    *
@@ -236,7 +280,7 @@ public:
    * \attention This will block if the container is locked.
    */
   ~locking_container() {
-    proxy self = this->get();
+    this->get();
   }
 
   /** @name Accessor Functions
@@ -260,13 +304,12 @@ public:
    * \return proxy object
    */
   inline proxy get_auth(lock_auth_base *Authorization, bool Block = true) {
-    //NOTE: no read/write choice is given here!
-    return proxy(&contained, &locks, Authorization, Block);
+    return this->get_multi(NULL, Authorization, Block);
   }
 
   /*! Const version of \ref locking_container::get.*/
   inline const_proxy get_auth_const(lock_auth_base *Authorization, bool Block = true) const {
-    return const_proxy(&contained, &locks, Authorization, true, Block);
+    return this->get_multi_const(NULL, Authorization, Block);
   }
 
   //@}
@@ -282,6 +325,15 @@ public:
   }
 
 private:
+  inline proxy get_multi(lock_base *Multi, lock_auth_base *Authorization, bool Block = true) {
+    //NOTE: no read/write choice is given here!
+    return proxy(&contained, &locks, Authorization, Block, Multi);
+  }
+
+  inline const_proxy get_multi_const(lock_base *Multi, lock_auth_base *Authorization, bool Block = true) const {
+    return const_proxy(&contained, &locks, Authorization, true, Block, Multi);
+  }
+
   static inline bool auto_copy(const base &copied, type &copy) {
     typename base::const_proxy object = copied.get();
     if (!object) return false;
@@ -297,18 +349,356 @@ private:
 class lock_base {
 public:
   /*! Return < 0 must mean failure. Should return the current number of read locks on success.*/
-  virtual int lock(lock_auth_base *auth, bool read, bool block) = 0;
+  virtual int lock(lock_auth_base *auth, bool read, bool block = true, bool test = false) = 0;
   /*! Return < 0 must mean failure. Should return the current number of read locks on success.*/
   virtual int unlock(lock_auth_base *auth, bool read) = 0;
 
 protected:
-  static inline bool register_auth(lock_auth_base *auth, bool Read, bool Block, bool LockOut, bool InUse) {
-    return auth? auth->register_auth(Read, Block, LockOut, InUse) : true;
+  static inline bool register_auth(lock_auth_base *auth, bool Read, bool Block, bool LockOut, bool InUse, bool TestAuth) {
+    return auth? auth->register_auth(Read, Block, LockOut, InUse, TestAuth) : true;
   }
 
   static inline void release_auth(lock_auth_base *auth, bool Read) {
     if (auth) auth->release_auth(Read);
   }
+};
+
+
+/*! \class rw_lock
+    \brief Lock object that allows multiple readers at once.
+ */
+
+class rw_lock : public lock_base {
+public:
+  rw_lock() : readers(0), readers_waiting(0), writer(false), writer_waiting(false) {
+    pthread_mutex_init(&master_lock, NULL);
+    pthread_cond_init(&read_wait, NULL);
+    pthread_cond_init(&write_wait, NULL);
+  }
+
+private:
+  rw_lock(const rw_lock&);
+  rw_lock &operator = (const rw_lock&);
+
+public:
+  int lock(lock_auth_base *auth, bool read, bool block = true, bool test = false) {
+    if (pthread_mutex_lock(&master_lock) != 0) return -1;
+    //make sure this is an authorized lock type for the caller
+    if (!register_auth(auth, read, block, writer_waiting, writer || readers, test)) {
+      pthread_mutex_unlock(&master_lock);
+      return -1;
+    }
+    //check for blocking behavior
+    bool must_block = writer || writer_waiting || (!read && readers);
+    if (!block && must_block) {
+      if (!test) release_auth(auth, read);
+      pthread_mutex_unlock(&master_lock);
+      return -1;
+    }
+    if (read) {
+      //get a read lock
+      ++readers_waiting;
+      //NOTE: 'auth' is expected to prevent a deadlock if the caller already has
+      //a read lock and there is a writer waiting
+      while (writer || writer_waiting) {
+        if (pthread_cond_wait(&read_wait, &master_lock) != 0) {
+          if (!test) release_auth(auth, read);
+          --readers_waiting;
+          pthread_mutex_unlock(&master_lock);
+          return -1;
+        }
+      }
+      --readers_waiting;
+      int new_readers = ++readers;
+      //if for some strange reason there's an overflow...
+      assert(!writer && !writer_waiting && readers > 0);
+      pthread_mutex_unlock(&master_lock);
+      return new_readers;
+    } else {
+      //if the caller isn't the first in line for writing, wait until it is
+      ++readers_waiting;
+      while (writer_waiting) {
+        //NOTE: use 'read_wait' here, since that's what a write unlock broadcasts on
+        //NOTE: another thread should be blocking in 'write_wait' below
+        if (pthread_cond_wait(&read_wait, &master_lock) != 0) {
+          if (!test) release_auth(auth, read);
+          --readers_waiting;
+          pthread_mutex_unlock(&master_lock);
+          return -1;
+        }
+      }
+      --readers_waiting;
+      writer_waiting = true;
+      //get a write lock
+      while (writer || readers) {
+        if (pthread_cond_wait(&write_wait, &master_lock) != 0) {
+          if (!test) release_auth(auth, read);
+          writer_waiting = false;
+          pthread_mutex_unlock(&master_lock);
+          return -1;
+        }
+      }
+      writer_waiting = false;
+      writer = true;
+      pthread_mutex_unlock(&master_lock);
+      return 0;
+    }
+  }
+
+  int unlock(lock_auth_base *auth, bool read) {
+    if (pthread_mutex_lock(&master_lock) != 0) return -1;
+    release_auth(auth, read);
+    if (read) {
+      assert(!writer && readers > 0);
+      int new_readers = --readers;
+      if (!new_readers && writer_waiting) {
+        pthread_cond_broadcast(&write_wait);
+      }
+      pthread_mutex_unlock(&master_lock);
+      return new_readers;
+    } else {
+      assert(writer && !readers);
+      writer = false;
+      if (writer_waiting) {
+        pthread_cond_broadcast(&write_wait);
+      }
+      if (readers_waiting) {
+        pthread_cond_broadcast(&read_wait);
+      }
+      pthread_mutex_unlock(&master_lock);
+      return 0;
+    }
+  }
+
+  ~rw_lock() {
+    pthread_mutex_destroy(&master_lock);
+    pthread_cond_destroy(&read_wait);
+    pthread_cond_destroy(&write_wait);
+  }
+
+private:
+  int             readers, readers_waiting;
+  bool            writer, writer_waiting;
+  pthread_mutex_t master_lock;
+  pthread_cond_t  read_wait, write_wait;
+};
+
+
+/*! \class w_lock
+    \brief Lock object that allows only one thread access at a time.
+ */
+
+class w_lock : public lock_base {
+public:
+  w_lock() : locked(false) {
+    pthread_mutex_init(&write_lock, NULL);
+  }
+
+private:
+  w_lock(const w_lock&);
+  w_lock &operator = (const w_lock&);
+
+public:
+  int lock(lock_auth_base *auth, bool /*read*/, bool block = true, bool test = false) {
+    //NOTE: 'false' is passed instead of 'read' because this can lock out other readers
+    if (!register_auth(auth, false, block, locked, locked, test)) return -1;
+    if ((block? pthread_mutex_lock : pthread_mutex_trylock)(&write_lock) != 0) {
+      if (!test) release_auth(auth, false);
+      return -1;
+    }
+    assert(!locked);
+    locked = true;
+    return 0;
+  }
+
+  int unlock(lock_auth_base *auth, bool /*read*/) {
+    release_auth(auth, false);
+    assert(locked);
+    locked = false;
+    return (pthread_mutex_unlock(&write_lock) == 0)? 0 : -1;
+  }
+
+  ~w_lock() {
+    pthread_mutex_destroy(&write_lock);
+  }
+
+private:
+  bool locked;
+  pthread_mutex_t write_lock;
+};
+
+
+/*! \class r_lock
+    \brief Lock object that allows multiple readers but no writers.
+ */
+
+class r_lock : public lock_base {
+public:
+  r_lock() : counter(0) {}
+
+private:
+  r_lock(const r_lock&);
+  r_lock &operator = (const r_lock&);
+
+public:
+  int lock(lock_auth_base *auth, bool read, bool /*block*/ = true, bool test = false) {
+    if (!read) return -1;
+    if (!register_auth(auth, read, false, false, false, test)) return -1;
+    //NOTE: this should be atomic
+    int new_counter = ++counter;
+    //(check the copy!)
+    assert(new_counter > 0);
+    return new_counter;
+  }
+
+  int unlock(lock_auth_base *auth, bool read) {
+    if (!read) return -1;
+    release_auth(auth, read);
+    //NOTE: this should be atomic
+    int new_counter = --counter;
+    //(check the copy!)
+    assert(new_counter >= 0);
+    return new_counter;
+  }
+
+private:
+  std::atomic <int> counter;
+};
+
+
+/*! \class broken_lock
+    \brief Lock object that is permanently broken.
+ */
+
+struct broken_lock : public lock_base {
+  int lock(lock_auth_base* /*auth*/, bool /*read*/, bool /*block*/ = true, bool /*test*/ = false) { return -1; }
+  int unlock(lock_auth_base* /*auth*/, bool /*read*/) { return -1; }
+};
+
+
+/*! \class lock_auth
+    \brief Lock authorization object.
+    @see locking_container::auth_type
+    @see locking_container::get_new_auth
+    @see locking_container::get_auth
+    @see locking_container::get_auth_const
+
+    This class is used by \ref locking_container to prevent deadlocks. To
+    prevent deadlocks, create one \ref lock_auth instance per thread, and pass
+    it to the \ref locking_container when getting a proxy object. This will
+    prevent the thread from obtaining an new incompatible lock type when it
+    already holds a lock.
+ */
+
+template <class>
+class lock_auth : public lock_auth_base {
+public:
+  lock_auth() : writing(0) {}
+
+  bool lock_allowed(bool /*Read*/, bool /*Block*/ = true) const {
+    return !writing;
+  }
+
+private:
+  lock_auth(const lock_auth&);
+  lock_auth &operator = (const lock_auth&);
+
+  bool register_auth(bool /*Read*/, bool /*Block*/, bool /*LockOut*/, bool InUse, bool TestAuth) {
+    if (writing && InUse) return false;
+    if (TestAuth) return true;
+    ++writing;
+    assert(writing > 0);
+    return true;
+  }
+
+  void release_auth(bool /*Read*/) {
+    assert(writing > 0);
+    --writing;
+  }
+
+  int writing;
+};
+
+template <>
+class lock_auth <rw_lock> : public lock_auth_base {
+public:
+  lock_auth() : reading(0), writing(0) {}
+
+  bool lock_allowed(bool Read, bool Block = true) const {
+    if (!Block && !Read) return true;
+    if (Read) return !writing;
+    else      return !writing && !reading;
+  }
+
+private:
+  lock_auth(const lock_auth&);
+  lock_auth &operator = (const lock_auth&);
+
+  bool register_auth(bool Read, bool Block, bool LockOut, bool InUse, bool TestAuth) {
+    if (!Block && !Read)                 return true;
+    if (writing && InUse)                return false;
+    if (reading && !Read && InUse)       return false;
+    if ((reading || writing) && LockOut) return false;
+    if (TestAuth) return true;
+    if (Read) {
+      ++reading;
+      assert(reading > 0);
+    } else {
+      ++writing;
+      assert(writing > 0);
+    }
+    return true;
+  }
+
+  void release_auth(bool Read) {
+    if (Read) {
+      //NOTE: don't check 'writing' because there are a few exceptions!
+      assert(reading > 0);
+      --reading;
+    } else {
+      //NOTE: don't check 'reading' because there are a few exceptions!
+      assert(writing > 0);
+      --writing;
+    }
+  }
+
+  int  reading, writing;
+};
+
+template <>
+class lock_auth <r_lock> : public lock_auth_base {
+public:
+  lock_auth() : reading(0) {}
+
+  bool lock_allowed(bool Read, bool /*Block*/ = true) const { return Read; }
+
+private:
+  bool register_auth(bool Read, bool /*Block*/, bool LockOut, bool /*InUse*/, bool TestAuth) {
+    if (!Read)              return false;
+    if (reading && LockOut) return false;
+    if (TestAuth) return true;
+    ++reading;
+    assert(reading > 0);
+    return true;
+  }
+
+  void release_auth(bool Read) {
+    assert(Read);
+    assert(reading > 0);
+    --reading;
+  }
+
+  int  reading;
+};
+
+template <>
+class lock_auth <broken_lock> : public lock_auth_base {
+public:
+  bool lock_allowed(bool /*Read*/, bool /*Block*/ = true) const { return false; }
+
+private:
+  bool register_auth(bool /*Read*/, bool /*Block*/, bool /*LockOut*/, bool /*InUse*/, bool /*TestAuth*/) { return false; }
+  void release_auth(bool /*Read*/) { assert(false); }
 };
 
 
@@ -321,8 +711,9 @@ private:
 public:
   object_proxy_base() {}
 
-  object_proxy_base(Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth, bool new_read, bool block) :
-    container_lock(new locker(new_pointer, new_locks, new_auth, new_read, block)) {}
+  object_proxy_base(Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth,
+    bool new_read, bool block, lock_base *new_multi) :
+    container_lock(new locker(new_pointer, new_locks, new_auth, new_read, block, new_multi)) {}
 
   inline int last_lock_count() const {
     //(mostly provided for debugging)
@@ -345,10 +736,14 @@ protected:
 private:
   class locker {
   public:
-    locker() : pointer(NULL), lock_count(), read(true), locks(NULL), auth() {}
+    locker() : pointer(NULL), lock_count(), read(true), locks(NULL), multi(NULL), auth() {}
 
-    locker(Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth, bool new_read, bool block) :
-      pointer(new_pointer), lock_count(), read(new_read), locks(new_locks), auth(new_auth) {
+    locker(Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth,
+      bool new_read, bool block, lock_base *new_multi) :
+      pointer(new_pointer), lock_count(), read(new_read), locks(new_locks), multi(new_multi), auth(new_auth) {
+      //attempt to lock the multi-lock if there is one (not counted toward 'auth')
+      if (multi && multi->lock(auth, true, block, true) < 0) this->opt_out(false, false);
+      //attempt to lock the container's lock
       if (!locks || (lock_count = locks->lock(auth, read, block)) < 0) this->opt_out(false);
     }
 
@@ -361,12 +756,15 @@ private:
       return read;
     }
 
-    void opt_out(bool unlock) {
+    void opt_out(bool unlock1, bool unlock2 = true) {
       pointer    = NULL;
       lock_count = 0;
-      if (unlock && locks) locks->unlock(auth, read);
+      if (unlock1 && locks) locks->unlock(auth, read);
+      //NOTE: pass 'NULL" as authorization because the lock wasn't recorded
+      if (unlock2 && multi) multi->unlock(NULL, true);
       auth  = NULL;
       locks = NULL;
+      multi = NULL;
     }
 
     inline ~locker() {
@@ -380,9 +778,9 @@ private:
     locker(const locker&);
     locker &operator = (const locker&);
 
-    bool            read;
-    lock_base      *locks;
-    lock_auth_base *auth;
+    bool             read;
+    lock_base       *locks, *multi;
+    lock_auth_base  *auth;
   };
 
   lock_type container_lock;
@@ -404,8 +802,9 @@ class object_proxy : public object_proxy_base <Type> {
 private:
   template <class, class> friend class locking_container;
 
-  object_proxy(Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth, bool block) :
-    object_proxy_base <Type> (new_pointer, new_locks, new_auth, false, block) {}
+  object_proxy(Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth,
+    bool block, lock_base *new_multi) :
+    object_proxy_base <Type> (new_pointer, new_locks, new_auth, false, block, new_multi) {}
 
 public:
   object_proxy() : object_proxy_base <Type> () {}
@@ -484,8 +883,9 @@ class object_proxy <const Type> : public object_proxy_base <const Type> {
 private:
   template <class, class> friend class locking_container;
 
-  object_proxy(const Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth, bool read, bool block) :
-    object_proxy_base <const Type> (new_pointer, new_locks, new_auth, read, block) {}
+  object_proxy(const Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth,
+    bool read, bool block, lock_base *new_multi) :
+    object_proxy_base <const Type> (new_pointer, new_locks, new_auth, read, block, new_multi) {}
 
 public:
   object_proxy() : object_proxy_base <const Type> () {}
@@ -556,338 +956,60 @@ public:
 };
 
 
-/*! \class rw_lock
-    \brief Lock object that allows multiple readers at once.
- */
-
-class rw_lock : public lock_base {
-public:
-  rw_lock() : readers(0), readers_waiting(0), writer(false), writer_waiting(false) {
-    pthread_mutex_init(&master_lock, NULL);
-    pthread_cond_init(&read_wait, NULL);
-    pthread_cond_init(&write_wait, NULL);
-  }
-
-private:
-  rw_lock(const rw_lock&);
-  rw_lock &operator = (const rw_lock&);
-
-public:
-  int lock(lock_auth_base *auth, bool read, bool block) {
-    if (pthread_mutex_lock(&master_lock) != 0) return -1;
-    //make sure this is an authorized lock type for the caller
-    if (!register_auth(auth, read, block, writer_waiting, writer || readers)) {
-      pthread_mutex_unlock(&master_lock);
-      return -1;
-    }
-    //check for blocking behavior
-    bool must_block = writer || writer_waiting || (!read && readers);
-    if (!block && must_block) {
-      release_auth(auth, read);
-      pthread_mutex_unlock(&master_lock);
-      return -1;
-    }
-    if (read) {
-      //get a read lock
-      ++readers_waiting;
-      //NOTE: 'auth' is expected to prevent a deadlock if the caller already has
-      //a read lock and there is a writer waiting
-      while (writer || writer_waiting) {
-        if (pthread_cond_wait(&read_wait, &master_lock) != 0) {
-          release_auth(auth, read);
-          --readers_waiting;
-          pthread_mutex_unlock(&master_lock);
-          return -1;
-        }
-      }
-      --readers_waiting;
-      int new_readers = ++readers;
-      //if for some strange reason there's an overflow...
-      assert(!writer && !writer_waiting && readers > 0);
-      pthread_mutex_unlock(&master_lock);
-      return new_readers;
-    } else {
-      //if the caller isn't the first in line for writing, wait until it is
-      ++readers_waiting;
-      while (writer_waiting) {
-        //NOTE: use 'read_wait' here, since that's what a write unlock broadcasts on
-        //NOTE: another thread should be blocking in 'write_wait' below
-        if (pthread_cond_wait(&read_wait, &master_lock) != 0) {
-          release_auth(auth, read);
-          --readers_waiting;
-          pthread_mutex_unlock(&master_lock);
-          return -1;
-        }
-      }
-      --readers_waiting;
-      writer_waiting = true;
-      //get a write lock
-      while (writer || readers) {
-        if (pthread_cond_wait(&write_wait, &master_lock) != 0) {
-          release_auth(auth, read);
-          writer_waiting = false;
-          pthread_mutex_unlock(&master_lock);
-          return -1;
-        }
-      }
-      writer_waiting = false;
-      writer = true;
-      pthread_mutex_unlock(&master_lock);
-      return 0;
-    }
-  }
-
-  int unlock(lock_auth_base *auth, bool read) {
-    if (pthread_mutex_lock(&master_lock) != 0) return -1;
-    release_auth(auth, read);
-    if (read) {
-      assert(!writer && readers > 0);
-      int new_readers = --readers;
-      if (!new_readers && writer_waiting) {
-        pthread_cond_broadcast(&write_wait);
-      }
-      pthread_mutex_unlock(&master_lock);
-      return new_readers;
-    } else {
-      assert(writer && !readers);
-      writer = false;
-      if (writer_waiting) {
-        pthread_cond_broadcast(&write_wait);
-      }
-      if (readers_waiting) {
-        pthread_cond_broadcast(&read_wait);
-      }
-      pthread_mutex_unlock(&master_lock);
-      return 0;
-    }
-  }
-
-  ~rw_lock() {
-    pthread_mutex_destroy(&master_lock);
-    pthread_cond_destroy(&read_wait);
-    pthread_cond_destroy(&write_wait);
-  }
-
-private:
-  int             readers, readers_waiting;
-  bool            writer, writer_waiting;
-  pthread_mutex_t master_lock;
-  pthread_cond_t  read_wait, write_wait;
-};
-
-
-/*! \class w_lock
-    \brief Lock object that allows only one thread access at a time.
- */
-
-class w_lock : public lock_base {
-public:
-  w_lock() : locked(false) {
-    pthread_mutex_init(&write_lock, NULL);
-  }
-
-private:
-  w_lock(const w_lock&);
-  w_lock &operator = (const w_lock&);
-
-public:
-  int lock(lock_auth_base *auth, bool /*read*/, bool block) {
-    //NOTE: 'false' is passed instead of 'read' because this can lock out other readers
-    if (!register_auth(auth, false, block, locked, locked)) return -1;
-    if ((block? pthread_mutex_lock : pthread_mutex_trylock)(&write_lock) != 0) {
-      release_auth(auth, false);
-      return -1;
-    }
-    assert(!locked);
-    locked = true;
-    return 0;
-  }
-
-  int unlock(lock_auth_base *auth, bool /*read*/) {
-    release_auth(auth, false);
-    assert(locked);
-    locked = false;
-    return (pthread_mutex_unlock(&write_lock) == 0)? 0 : -1;
-  }
-
-  ~w_lock() {
-    pthread_mutex_destroy(&write_lock);
-  }
-
-private:
-  bool locked;
-  pthread_mutex_t write_lock;
-};
-
-
-/*! \class r_lock
-    \brief Lock object that allows multiple readers but no writers.
- */
-
-class r_lock : public lock_base {
-public:
-  r_lock() : counter(0) {}
-
-private:
-  r_lock(const r_lock&);
-  r_lock &operator = (const r_lock&);
-
-public:
-  int lock(lock_auth_base *auth, bool read, bool /*block*/) {
-    if (!read) return -1;
-    if (!register_auth(auth, read, false, false, false)) return -1;
-    //NOTE: this should be atomic
-    int new_counter = ++counter;
-    //(check the copy!)
-    assert(new_counter > 0);
-    return new_counter;
-  }
-
-  int unlock(lock_auth_base *auth, bool read) {
-    if (!read) return -1;
-    release_auth(auth, read);
-    //NOTE: this should be atomic
-    int new_counter = --counter;
-    //(check the copy!)
-    assert(new_counter >= 0);
-    return new_counter;
-  }
-
-private:
-  std::atomic <int> counter;
-};
-
-
-/*! \class broken_lock
-    \brief Lock object that is permanently broken.
- */
-
-struct broken_lock : public lock_base {
-  int lock(lock_auth_base* /*auth*/, bool /*read*/, bool /*block*/) { return -1; }
-  int unlock(lock_auth_base* /*auth*/, bool /*read*/)               { return -1; }
-};
-
-
-/*! \class lock_auth
-    \brief Lock authorization object.
-    @see locking_container::auth_type
-    @see locking_container::get_new_auth
-    @see locking_container::get_auth
-    @see locking_container::get_auth_const
-
-    This class is used by \ref locking_container to prevent deadlocks. To
-    prevent deadlocks, create one \ref lock_auth instance per thread, and pass
-    it to the \ref locking_container when getting a proxy object. This will
-    prevent the thread from obtaining an new incompatible lock type when it
-    already holds a lock.
- */
-
-template <class>
-class lock_auth : public lock_auth_base {
-public:
-  lock_auth() : writing(0) {}
-
-  bool lock_allowed(bool /*Read*/, bool /*Block*/ = true) const {
-    return !writing;
-  }
-
-private:
-  lock_auth(const lock_auth&);
-  lock_auth &operator = (const lock_auth&);
-
-  bool register_auth(bool /*Read*/, bool /*Block*/, bool /*LockOut*/, bool InUse) {
-    if (writing && InUse) return false;
-    ++writing;
-    assert(writing > 0);
-    return true;
-  }
-
-  void release_auth(bool /*Read*/) {
-    assert(writing > 0);
-    --writing;
-  }
-
-  int writing;
-};
+class null_container;
 
 template <>
-class lock_auth <rw_lock> : public lock_auth_base {
-public:
-  lock_auth() : reading(0), writing(0) {}
-
-  bool lock_allowed(bool Read, bool Block = true) const {
-    if (!Block && !Read) return true;
-    if (Read) return !writing;
-    else      return !writing && !reading;
-  }
-
+class object_proxy <void> : public object_proxy_base <void> {
 private:
-  lock_auth(const lock_auth&);
-  lock_auth &operator = (const lock_auth&);
+  friend class null_container;
 
-  bool register_auth(bool Read, bool Block, bool LockOut, bool InUse) {
-    if (!Block && !Read)                 return true;
-    if (writing && InUse)                return false;
-    if (reading && !Read && InUse)       return false;
-    if ((reading || writing) && LockOut) return false;
-    if (Read) {
-      ++reading;
-      assert(reading > 0);
-    } else {
-      ++writing;
-      assert(writing > 0);
-    }
-    return true;
+  object_proxy(bool value, lock_base *new_locks, lock_auth_base *new_auth, bool block, lock_base *new_multi) :
+    object_proxy_base <void> ((void*) value, new_locks, new_auth, false, block, new_multi) {}
+
+public:
+  object_proxy() : object_proxy_base <void> () {}
+
+  inline object_proxy &clear() {
+    this->opt_out();
+    return *this;
   }
 
-  void release_auth(bool Read) {
-    if (Read) {
-      //NOTE: don't check 'writing' because there are a few exceptions!
-      assert(reading > 0);
-      --reading;
-    } else {
-      //NOTE: don't check 'reading' because there are a few exceptions!
-      assert(writing > 0);
-      --writing;
-    }
+  inline operator bool() const {
+    return this->pointer();
   }
 
-  int  reading, writing;
+  inline bool operator ! () const {
+    return !this->pointer();
+  }
 };
 
-template <>
-class lock_auth <r_lock> : public lock_auth_base {
-public:
-  lock_auth() : reading(0) {}
 
-  bool lock_allowed(bool Read, bool /*Block*/ = true) const { return Read; }
+/*! \class null_container
+    \brief Empty container, used as a global locking mechanism.
+ */
 
+class null_container : public null_container_base {
 private:
-  bool register_auth(bool Read, bool /*Block*/, bool LockOut, bool /*InUse*/) {
-    if (!Read)              return false;
-    if (reading && LockOut) return false;
-    ++reading;
-    assert(reading > 0);
-    return true;
+  typedef lock_auth <rw_lock> auth_base_type;
+
+public:
+  typedef object_proxy <void>              proxy;
+  typedef std::shared_ptr <lock_auth_base> auth_type;
+
+  ~null_container() {
+    this->get();
   }
 
-  void release_auth(bool Read) {
-    assert(Read);
-    assert(reading > 0);
-    --reading;
+  inline proxy get(bool Block = true) {
+    return proxy(true, &locks, NULL, Block, NULL);
   }
 
-  int  reading;
-};
-
-template <>
-class lock_auth <broken_lock> : public lock_auth_base {
-public:
-  bool lock_allowed(bool /*Read*/, bool /*Block*/ = true) const { return false; }
-
 private:
-  bool register_auth(bool /*Read*/, bool /*Block*/, bool /*LockOut*/, bool /*InUse*/) { return false; }
-  void release_auth(bool /*Read*/) { assert(false); }
+  inline lock_base *get_lock_object() {
+    return &locks;
+  }
+
+  mutable rw_lock locks;
 };
 
 #endif //locking_container_hpp

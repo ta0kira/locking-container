@@ -29,6 +29,20 @@ to note that the authorization objects don't track which containers the thread
 holds a lock for! From the perspective of authorization, attempting to lock a
 second container is the same as attempting to lock the same container again.
 
+Deadlock prevention will by default prevent a thread from holding multiple write
+locks at once, or a write lock and one or more read locks at once. This isn't
+always practical, however. The class 'null_container' is designed to work around
+this, without compromising deadlock prevention. Essentially, a single
+'null_container' is used to keep track of all of the read and write locks that
+are currently being held by all threads. When a thread wants to access multiple
+containers at once, it releases all of its current locks and requests a write
+lock for the 'null_container'. The lock is granted when no other thread has a
+lock on any of the objects in question. (New locks on other objects are blocked
+while the thread is waiting for a write lock). This allows the thread to obtain
+multiple write locks, as long as they are all for different objects. This
+effectively silences all other threads while the thread in question takes its
+pick of objects to lock. (See 'thread_multi' in test.cpp for an example.)
+
 See simple.cpp for an example. You might also want to compile/run test.cpp to
 make sure that 'locking_container' works properly on the target system.
 
