@@ -217,9 +217,13 @@ static void *thread_multi(void *nv) {
       nanosleep(&wait, NULL);
     }
 
-    //attempt a multi-lock
+    //get a write lock on 'multi_lock'. this blocks until all other locks have
+    //been released (provided they were obtained with 'get_multi' or
+    //'get_multi_const' using 'multi_lock). this is mostly a way to appease
+    //'auth', because it's preventing deadlocks.
+
     send_output("?multi0 %li\n", n);
-    null_container::proxy multi = multi_lock.get();
+    null_container::proxy multi = multi_lock.get_auth(auth);
     if (!multi) {
       send_output("!multi0 %li\n", n);
       return NULL;

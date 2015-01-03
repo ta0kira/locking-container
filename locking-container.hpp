@@ -997,11 +997,15 @@ public:
   typedef std::shared_ptr <lock_auth_base> auth_type;
 
   ~null_container() {
-    this->get();
+    this->get_auth(NULL);
   }
 
-  inline proxy get(bool Block = true) {
-    return proxy(true, &locks, NULL, Block, NULL);
+  inline proxy get_auth(auth_type &Authorization, bool Block = true) {
+    return this->get_auth(Authorization.get(), Block);
+  }
+
+  inline proxy get_auth(lock_auth_base *Authorization, bool Block = true) {
+    return proxy(true, &locks, Authorization, Block, NULL);
   }
 
 private:
