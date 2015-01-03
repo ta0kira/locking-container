@@ -19,16 +19,43 @@
  *     there are readers, it will block until all readers leave, blocking out
  *     all new readers and writers in the meantime.
  *
- *   - 'w_lock': This lock doesn't make a distinction between readers and
- *     writers; only one thread can hold a lock at any given time. This should
- *     operate faster if you don't need read locks.
- *
  *   - 'r_lock': This lock allows multiple readers, but it never allows writers.
  *     This might be useful if you have a container that will never be written
  *     to but you nevertheless need to retain the same container semantics.
  *
+ *   - 'w_lock': This lock doesn't make a distinction between readers and
+ *     writers; only one thread can hold a lock at any given time. This should
+ *     operate faster if you don't need read locks. Note that, for the purposes
+ *     of deadlock prevention, this treats all locks as write locks.
+ *
  *   - 'broken_lock': This is mostly a joke; however, you can use it to test
  *     pathological cases. This lock will always fail to lock and unlock.
+ *
+ * Each lock type has a corresponding 'lock_auth' specialization for use with
+ * deadlock prevention. All of them have (nearly) identical behavior to their
+ * corresponding lock types, as far as how many read and write locks can be held
+ * at a given time.
+ *
+ *   - 'lock_auth <rw_lock>': This auth. type allows the caller to hold multiple
+ *     read locks, or a single write lock, but not both. Note that if another
+ *     thread is waiting for a read lock on the container and the caller already
+ *     has a read lock then the lock will be rejected. Two exception to these
+ *     rules are: if the container to be locked currently has no other locks, or
+ *     if the call isn't blocking and it's for a write lock.
+ *
+ *   - 'lock_auth <r_lock>': This auth. type allows the caller to hold multiple
+ *     read locks, but no write locks. Note that if another thread is waiting
+ *     for a read lock on the container and the caller already has a read lock
+ *     then the lock will be rejected.
+ *
+ *   - 'lock_auth <w_lock>': This auth. type allows the caller to hold no more
+ *     than one lock at a time, regardless of lock type. This is the default
+ *     behavior of 'lock_auth' when it isn't specialized for a lock type. An
+ *     exception to this behavior is if the container to be locked currently has
+ *     no other locks.
+ *
+ *   - 'lock_auth <broken_lock>': This auth. type doesn't allow the caller to
+ *     obtain any locks.
  *
  * Other notes:
  *
@@ -68,14 +95,14 @@ class lock_base;
 
 class lock_auth_base {
 public:
-  virtual bool lock_allowed(bool Read) const = 0;
+  virtual bool lock_allowed(bool Read, bool Block = true) const = 0;
 
   virtual inline ~lock_auth_base() {}
 
 private:
   friend class lock_base;
 
-  virtual bool register_auth(bool Read, bool ReadWait, bool WriteWait) = 0;
+  virtual bool register_auth(bool Read, bool Block, bool LockOut, bool InUse) = 0;
   virtual void release_auth(bool Read) = 0;
 };
 
@@ -275,8 +302,8 @@ public:
   virtual int unlock(lock_auth_base *auth, bool read) = 0;
 
 protected:
-  static inline bool register_auth(lock_auth_base *auth, bool Read, bool ReadWait, bool WriteWait) {
-    return auth? auth->register_auth(Read, ReadWait, WriteWait) : true;
+  static inline bool register_auth(lock_auth_base *auth, bool Read, bool Block, bool LockOut, bool InUse) {
+    return auth? auth->register_auth(Read, Block, LockOut, InUse) : true;
   }
 
   static inline void release_auth(lock_auth_base *auth, bool Read) {
@@ -549,7 +576,7 @@ public:
   int lock(lock_auth_base *auth, bool read, bool block) {
     if (pthread_mutex_lock(&master_lock) != 0) return -1;
     //make sure this is an authorized lock type for the caller
-    if (!register_auth(auth, read, readers_waiting, writer_waiting)) {
+    if (!register_auth(auth, read, block, writer_waiting, writer || readers)) {
       pthread_mutex_unlock(&master_lock);
       return -1;
     }
@@ -664,17 +691,19 @@ private:
   w_lock &operator = (const w_lock&);
 
 public:
-  int lock(lock_auth_base *auth, bool /*unused*/, bool block) {
-    if (!register_auth(auth, false, 0, 0)) return -1;
+  int lock(lock_auth_base *auth, bool /*read*/, bool block) {
+    //NOTE: 'false' is passed instead of 'read' because this can lock out other readers
+    if (!register_auth(auth, false, block, locked, locked)) return -1;
     if ((block? pthread_mutex_lock : pthread_mutex_trylock)(&write_lock) != 0) {
       release_auth(auth, false);
       return -1;
     }
+    assert(!locked);
     locked = true;
     return 0;
   }
 
-  int unlock(lock_auth_base *auth, bool /*unused*/) {
+  int unlock(lock_auth_base *auth, bool /*read*/) {
     release_auth(auth, false);
     assert(locked);
     locked = false;
@@ -704,9 +733,9 @@ private:
   r_lock &operator = (const r_lock&);
 
 public:
-  int lock(lock_auth_base *auth, bool read, bool /*unused*/) {
+  int lock(lock_auth_base *auth, bool read, bool /*block*/) {
     if (!read) return -1;
-    if (!register_auth(auth, read, 0, 0)) return -1;
+    if (!register_auth(auth, read, false, false, false)) return -1;
     //NOTE: this should be atomic
     int new_counter = ++counter;
     //(check the copy!)
@@ -734,8 +763,8 @@ private:
  */
 
 struct broken_lock : public lock_base {
-  int lock(lock_auth_base* /*unused*/, bool /*unused*/, bool /*unused*/) { return -1; }
-  int unlock(lock_auth_base* /*unused*/, bool /*unused*/)                { return -1; }
+  int lock(lock_auth_base* /*auth*/, bool /*read*/, bool /*block*/) { return -1; }
+  int unlock(lock_auth_base* /*auth*/, bool /*read*/)               { return -1; }
 };
 
 
@@ -756,103 +785,109 @@ struct broken_lock : public lock_base {
 template <class>
 class lock_auth : public lock_auth_base {
 public:
-  lock_auth() : used(false) {}
+  lock_auth() : writing(0) {}
 
-  bool lock_allowed(bool /*unused*/) const {
-    return !used;
+  bool lock_allowed(bool /*Read*/, bool /*Block*/ = true) const {
+    return !writing;
   }
 
 private:
   lock_auth(const lock_auth&);
   lock_auth &operator = (const lock_auth&);
 
-  bool register_auth(bool /*unused*/, bool /*unused*/, bool /*unused*/) {
-    if (used) return false;
-    return (used = true);
+  bool register_auth(bool /*Read*/, bool /*Block*/, bool /*LockOut*/, bool InUse) {
+    if (writing && InUse) return false;
+    ++writing;
+    assert(writing > 0);
+    return true;
   }
 
-  void release_auth(bool /*unused*/) {
-    assert(used);
-    used = false;
+  void release_auth(bool /*Read*/) {
+    assert(writing > 0);
+    --writing;
   }
 
-  bool used;
+  int writing;
 };
 
 template <>
 class lock_auth <rw_lock> : public lock_auth_base {
 public:
-  lock_auth() : counter(0), write(false) {}
+  lock_auth() : reading(0), writing(0) {}
 
-  bool lock_allowed(bool Read) const {
-    if (Read) return !write;
-    else      return !write && !counter;
+  bool lock_allowed(bool Read, bool Block = true) const {
+    if (!Block && !Read) return true;
+    if (Read) return !writing;
+    else      return !writing && !reading;
   }
 
 private:
   lock_auth(const lock_auth&);
   lock_auth &operator = (const lock_auth&);
 
-  bool register_auth(bool Read, bool ReadWait, bool WriteWait) {
-    if (write) return false;
-    //reject if this thread might be blocking writers
-    if (counter && (WriteWait || !Read)) return false;
+  bool register_auth(bool Read, bool Block, bool LockOut, bool InUse) {
+    if (!Block && !Read)                 return true;
+    if (writing && InUse)                return false;
+    if (reading && !Read && InUse)       return false;
+    if ((reading || writing) && LockOut) return false;
     if (Read) {
-      ++counter;
-      assert(counter > 0);
+      ++reading;
+      assert(reading > 0);
     } else {
-      if (counter) return false;
-      write = true;
+      ++writing;
+      assert(writing > 0);
     }
     return true;
   }
 
   void release_auth(bool Read) {
     if (Read) {
-      assert(counter && !write);
-      --counter;
+      //NOTE: don't check 'writing' because there are a few exceptions!
+      assert(reading > 0);
+      --reading;
     } else {
-      assert(write && !counter);
-      write = false;
+      //NOTE: don't check 'reading' because there are a few exceptions!
+      assert(writing > 0);
+      --writing;
     }
   }
 
-  int  counter;
-  bool write;
+  int  reading, writing;
 };
 
 template <>
 class lock_auth <r_lock> : public lock_auth_base {
 public:
-  lock_auth() : counter(0) {}
+  lock_auth() : reading(0) {}
 
-  bool lock_allowed(bool Read) const { return Read; }
+  bool lock_allowed(bool Read, bool /*Block*/ = true) const { return Read; }
 
 private:
-  bool register_auth(bool Read, bool /*unused*/, bool WriteWait) {
-    if (!Read || (counter && WriteWait)) return false;
-    ++counter;
-    assert(counter > 0);
+  bool register_auth(bool Read, bool /*Block*/, bool LockOut, bool /*InUse*/) {
+    if (!Read)              return false;
+    if (reading && LockOut) return false;
+    ++reading;
+    assert(reading > 0);
     return true;
   }
 
   void release_auth(bool Read) {
     assert(Read);
-    assert(counter > 0);
-    --counter;
+    assert(reading > 0);
+    --reading;
   }
 
-  int  counter;
+  int  reading;
 };
 
 template <>
 class lock_auth <broken_lock> : public lock_auth_base {
 public:
-  bool lock_allowed(bool /*unused*/) const { return false; }
+  bool lock_allowed(bool /*Read*/, bool /*Block*/ = true) const { return false; }
 
 private:
-  bool register_auth(bool /*unused*/, bool /*unused*/, bool /*unused*/) { return false; }
-  void release_auth(bool /*unused*/) { assert(false); }
+  bool register_auth(bool /*Read*/, bool /*Block*/, bool /*LockOut*/, bool /*InUse*/) { return false; }
+  void release_auth(bool /*Read*/) { assert(false); }
 };
 
 #endif //locking_container_hpp
