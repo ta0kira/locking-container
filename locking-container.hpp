@@ -89,13 +89,13 @@ private:
     \brief Base class for \ref locking_container.
  */
 
-template <class> class mutex_proxy;
+template <class> class object_proxy;
 
 template <class Type>
 struct locking_container_base {
   typedef Type                             type;
-  typedef mutex_proxy <type>               proxy;
-  typedef mutex_proxy <const type>         const_proxy;
+  typedef object_proxy <type>               proxy;
+  typedef object_proxy <const type>         const_proxy;
   typedef std::shared_ptr <lock_auth_base> auth_type;
 
   inline proxy get(bool Block = true) {
@@ -131,7 +131,7 @@ struct locking_container_base {
     Each instance of this class contains a mutex and an encapsulated object of
     the type denoted by the template parameter. The \ref locking_container::get
     and \ref locking_container::get_const functions provide a proxy object (see
-    \ref mutex_proxy) that automatically locks and unlocks the mutex to simplify
+    \ref object_proxy) that automatically locks and unlocks the mutex to simplify
     code that accesses the encapsulated object.
     \attention This class contains a mutable member, which means that a memory
     page containing even a const instance should not be remapped as read-only.
@@ -228,9 +228,9 @@ public:
    * unlocking. If "Block" is true then the call blocks until the mutex
    * can be locked. If it's false, the call returns immediately, with the
    * possibility of not obtaining a lock.
-   * @see mutex_proxy
+   * @see object_proxy
    * \attention Always check that the returned object contains a valid
-   * reference with mutex_proxy::operator!. The reference will always be
+   * reference with object_proxy::operator!. The reference will always be
    * invalid if a mutex lock hasn't been obtained.
    * \attention The returned object should only be passed by value, and it
    * should only be passed within the same thread that
@@ -295,15 +295,15 @@ protected:
 
 
 template <class Type>
-class mutex_proxy_base {
+class object_proxy_base {
 private:
   class locker;
   typedef std::shared_ptr <locker> lock_type;
 
 public:
-  mutex_proxy_base() {}
+  object_proxy_base() {}
 
-  mutex_proxy_base(Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth, bool new_read, bool block) :
+  object_proxy_base(Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth, bool new_read, bool block) :
     container_lock(new locker(new_pointer, new_locks, new_auth, new_read, block)) {}
 
   inline int last_lock_count() const {
@@ -371,7 +371,7 @@ private:
 };
 
 
-/*! \class mutex_proxy
+/*! \class object_proxy
     \brief Proxy object for \ref locking_container access.
 
     Instances of this class are returned by \ref locking_container instances as
@@ -382,15 +382,15 @@ private:
  */
 
 template <class Type>
-class mutex_proxy : public mutex_proxy_base <Type> {
+class object_proxy : public object_proxy_base <Type> {
 private:
   template <class, class> friend class locking_container;
 
-  mutex_proxy(Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth, bool block) :
-    mutex_proxy_base <Type> (new_pointer, new_locks, new_auth, false, block) {}
+  object_proxy(Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth, bool block) :
+    object_proxy_base <Type> (new_pointer, new_locks, new_auth, false, block) {}
 
 public:
-  mutex_proxy() : mutex_proxy_base <Type> () {}
+  object_proxy() : object_proxy_base <Type> () {}
 
   /** @name Checking Referred-to Object
   *
@@ -406,7 +406,7 @@ public:
    *
    * \return *this
    */
-  inline mutex_proxy &clear() {
+  inline object_proxy &clear() {
     this->opt_out();
     return *this;
   }
@@ -431,7 +431,7 @@ public:
    *
    * \return equal (true) or unequal (false)
    */
-  inline bool operator == (const mutex_proxy &equal) const {
+  inline bool operator == (const object_proxy &equal) const {
     return this->pointer() == equal.pointer();
   }
 
@@ -439,7 +439,7 @@ public:
    *
    * \return equal (true) or unequal (false)
    */
-  inline bool operator == (const mutex_proxy <const Type> &equal) const {
+  inline bool operator == (const object_proxy <const Type> &equal) const {
     return this->pointer() == equal.pointer();
   }
 
@@ -462,15 +462,15 @@ public:
 
 
 template <class Type>
-class mutex_proxy <const Type> : public mutex_proxy_base <const Type> {
+class object_proxy <const Type> : public object_proxy_base <const Type> {
 private:
   template <class, class> friend class locking_container;
 
-  mutex_proxy(const Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth, bool read, bool block) :
-    mutex_proxy_base <const Type> (new_pointer, new_locks, new_auth, read, block) {}
+  object_proxy(const Type *new_pointer, lock_base *new_locks, lock_auth_base *new_auth, bool read, bool block) :
+    object_proxy_base <const Type> (new_pointer, new_locks, new_auth, read, block) {}
 
 public:
-  mutex_proxy() : mutex_proxy_base <const Type> () {}
+  object_proxy() : object_proxy_base <const Type> () {}
 
   /** @name Checking Referred-to Object
   *
@@ -486,7 +486,7 @@ public:
    *
    * \return *this
    */
-  inline mutex_proxy &clear() {
+  inline object_proxy &clear() {
     this->opt_out();
     return *this;
   }
@@ -511,7 +511,7 @@ public:
    *
    * \return equal (true) or unequal (false)
    */
-  inline bool operator == (const mutex_proxy &equal) const {
+  inline bool operator == (const object_proxy &equal) const {
     return this->pointer() == equal.pointer();
   }
 
@@ -519,7 +519,7 @@ public:
    *
    * \return equal (true) or unequal (false)
    */
-  inline bool operator == (const mutex_proxy <Type> &equal) const {
+  inline bool operator == (const object_proxy <Type> &equal) const {
     return this->pointer() == equal.pointer();
   }
 
