@@ -1,3 +1,10 @@
+/* This is both a sort of unit test, and a demonstration of how to use deadlock
+ * prevention.
+ *
+ * Suggested compilation command:
+ *   c++ -Wall -pedantic -std=c++11 test.cpp -o test -lpthread
+ */
+
 #include <time.h>
 #include <errno.h>
 #include <stdio.h>

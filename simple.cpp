@@ -4,6 +4,9 @@
  * Compile this program enabling C++11, and linking with libpthread if needed.
  * When you run this program, you should see no output or errors. An assertion
  * means a bug in the code.
+ *
+ * Suggested compilation command:
+ *   c++ -Wall -pedantic -std=c++11 simple.cpp -o simple -lpthread
  */
 
 #include <stdio.h>
