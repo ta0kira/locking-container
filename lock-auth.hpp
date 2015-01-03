@@ -54,33 +54,7 @@
 
 //NOTE: 'lock_auth_base' is defined in locks.hpp
 
-template <class>
-class lock_auth : public lock_auth_base {
-public:
-  lock_auth() : writing(0) {}
-
-  virtual int  writing_count() const { return writing; }
-  virtual bool always_write()  const { return true; }
-
-private:
-  lock_auth(const lock_auth&);
-  lock_auth &operator = (const lock_auth&);
-
-  bool register_auth(bool /*Read*/, bool /*LockOut*/, bool InUse, bool TestAuth) {
-    if (writing && InUse) return false;
-    if (TestAuth) return true;
-    ++writing;
-    assert(writing > 0);
-    return true;
-  }
-
-  void release_auth(bool /*Read*/) {
-    assert(writing > 0);
-    --writing;
-  }
-
-  int writing;
-};
+template <class> class lock_auth;
 
 template <>
 class lock_auth <rw_lock> : public lock_auth_base {
@@ -149,6 +123,34 @@ private:
   }
 
   int  reading;
+};
+
+template <>
+class lock_auth <w_lock> : public lock_auth_base {
+public:
+  lock_auth() : writing(0) {}
+
+  virtual int  writing_count() const { return writing; }
+  virtual bool always_write()  const { return true; }
+
+private:
+  lock_auth(const lock_auth&);
+  lock_auth &operator = (const lock_auth&);
+
+  bool register_auth(bool /*Read*/, bool /*LockOut*/, bool InUse, bool TestAuth) {
+    if (writing && InUse) return false;
+    if (TestAuth) return true;
+    ++writing;
+    assert(writing > 0);
+    return true;
+  }
+
+  void release_auth(bool /*Read*/) {
+    assert(writing > 0);
+    --writing;
+  }
+
+  int writing;
 };
 
 template <>

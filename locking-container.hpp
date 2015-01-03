@@ -67,7 +67,7 @@
  *     pathological cases. This lock will always fail to lock and unlock.
  *
  * Each lock type has a corresponding 'lock_auth' specialization for use with
- * deadlock prevention. All of them have (nearly) identical behavior to their
+ * deadlock prevention. All of them have (somewhat) identical behavior to their
  * corresponding lock types, as far as how many read and write locks can be held
  * at a given time.
  *
@@ -81,13 +81,15 @@
  *   - 'lock_auth <r_lock>': This auth. type allows the caller to hold multiple
  *     read locks, but no write locks. Note that if another thread is waiting
  *     for a write lock on the container and the caller already has a read lock
- *     then the lock will be rejected.
+ *     then the lock will be rejected. Use this auth. type if you want to ensure
+ *     that a thread doesn't obtain a write lock on any container.
  *
  *   - 'lock_auth <w_lock>': This auth. type allows the caller to hold no more
- *     than one lock at a time, regardless of lock type. This is the default
- *     behavior of 'lock_auth' when it isn't specialized for a lock type. An
- *     exception to this behavior is if the container to be locked currently has
- *     no other locks.
+ *     than one lock at a time, regardless of lock type. An exception to this
+ *     behavior is if the container to be locked currently has no other locks.
+ *     Use this auth. type if you are only using containers that use 'w_lock',
+ *     or if you want to disallow multiple read locks on containers that use
+ *     'rw_lock' or 'r_lock'.
  *
  *   - 'lock_auth <broken_lock>': This auth. type doesn't allow the caller to
  *     obtain any locks.
@@ -363,11 +365,9 @@ template <class Type1, class Type2>
 inline bool try_copy_container(locking_container_base <Type1> &Left,
   locking_container_base <Type2> &Right, null_container_base &Multi,
   lock_auth_base *Authorization, bool Block = true) {
-  null_container_base::proxy multi = Multi.get_auth(Authorization);
-  if (!multi) return false;
-  typename locking_container_base <Type1> ::proxy write = Left.get_auth(Authorization, Block);
+  typename locking_container_base <Type1> ::proxy write = Left.get_multi(Multi, Authorization, Block);
   if (!write) return false;
-  typename locking_container_base <Type2> ::const_proxy read = Right.get_auth_const(Authorization, Block);
+  typename locking_container_base <Type2> ::const_proxy read = Right.get_multi_const(Multi, Authorization, Block);
   if (!read) return false;
   *write = *read;
   return true;
