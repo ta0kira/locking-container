@@ -353,25 +353,30 @@ inline bool try_copy_container(locking_container_base <Type1> &Left,
  * @note This will attempt to obtain locks for both containers using the
  * \ref null_container_base object, and will fail if either lock operation
  * fails.
- * \attention This will almost certainly fail if the caller doesn't have a write
- * lock on the \ref null_container_base passed. This also assumes that no other
- * threads hold any locks on either of the containers.
+ * \attention This will only work if no other thread holds a lock on either of
+ * the containers.
+ * \attention If TryMulti is false, his will fail if the caller doesn't have a
+ * write lock on the \ref null_container_base passed.
  *
  * \param Left container being assigned to
  * \param Right container being assigned
  * \param Multi multi-lock tracking object
  * \param Authorization authorization object
  * \param Block whether or not to block when locking the containers
+ * \param TryMulti whether or not to attempt a write lock on Multi
  * \return success or failure, based entirely on locking success
  */
 template <class Type1, class Type2>
 inline bool try_copy_container(locking_container_base <Type1> &Left,
   locking_container_base <Type2> &Right, null_container_base &Multi,
-  lock_auth_base *Authorization, bool Block = true) {
+  lock_auth_base *Authorization, bool Block = true, bool TryMulti = true) {
+  null_container::proxy multi;
+  if (TryMulti && !(multi = Multi.get_auth(Authorization, Block))) return false;
   typename locking_container_base <Type1> ::proxy write = Left.get_multi(Multi, Authorization, Block);
   if (!write) return false;
   typename locking_container_base <Type2> ::const_proxy read = Right.get_multi_const(Multi, Authorization, Block);
   if (!read) return false;
+  if (TryMulti) multi.clear();
   *write = *read;
   return true;
 }
@@ -380,8 +385,8 @@ inline bool try_copy_container(locking_container_base <Type1> &Left,
 template <class Type1, class Type2>
 inline bool try_copy_container(locking_container_base <Type1> &Left,
   locking_container_base <Type2> &Right, null_container_base &Multi,
-  lock_auth_base::auth_type &Authorization, bool Block = true) {
-  return try_copy_container(Left, Right, Multi, Authorization.get(), Block);
+  lock_auth_base::auth_type &Authorization, bool Block = true, bool TryMulti = true) {
+  return try_copy_container(Left, Right, Multi, Authorization.get(), Block, TryMulti);
 }
 
 #endif //locking_container_hpp
