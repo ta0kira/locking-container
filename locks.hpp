@@ -51,14 +51,17 @@ class lock_auth_base {
 public:
   typedef std::shared_ptr <lock_auth_base> auth_type;
 
-  virtual bool lock_allowed(bool Read, bool Block = true) const = 0;
+  virtual int  reading_count() const { return 0; }
+  virtual int  writing_count() const { return 0; }
+  virtual bool always_read()   const { return false; }
+  virtual bool always_write()  const { return false; }
 
   virtual inline ~lock_auth_base() {}
 
 private:
   friend class lock_base;
 
-  virtual bool register_auth(bool Read, bool Block, bool LockOut, bool InUse, bool TestAuth) = 0;
+  virtual bool register_auth(bool Read, bool LockOut, bool InUse, bool TestAuth) = 0;
   virtual void release_auth(bool Read) = 0;
 };
 
@@ -75,9 +78,9 @@ public:
   virtual int unlock(lock_auth_base *auth, bool read, bool test = false) = 0;
 
 protected:
-  static inline bool register_auth(lock_auth_base *auth, bool Read, bool Block,
-    bool LockOut, bool InUse, bool TestAuth) {
-    return auth? auth->register_auth(Read, Block, LockOut, InUse, TestAuth) : true;
+  static inline bool register_auth(lock_auth_base *auth, bool Read, bool LockOut,
+    bool InUse, bool TestAuth) {
+    return auth? auth->register_auth(Read, LockOut, InUse, TestAuth) : true;
   }
 
   static inline void release_auth(lock_auth_base *auth, bool Read) {
@@ -107,7 +110,7 @@ public:
     if (pthread_mutex_lock(&master_lock) != 0) return -1;
     bool writer_reads = auth && the_writer == auth && read;
     //make sure this is an authorized lock type for the caller
-    if (!register_auth(auth, read, block, writer_reads? false : writer_waiting,
+    if (!register_auth(auth, read, writer_reads? false : writer_waiting,
                        writer_reads? false : (writer || readers), test)) {
       pthread_mutex_unlock(&master_lock);
       return -1;
@@ -230,7 +233,7 @@ private:
 public:
   int lock(lock_auth_base *auth, bool /*read*/, bool block = true, bool test = false) {
     //NOTE: 'false' is passed instead of 'read' because this can lock out other readers
-    if (!register_auth(auth, false, block, locked, locked, test)) return -1;
+    if (!register_auth(auth, false, locked, locked, test)) return -1;
     if ((block? pthread_mutex_lock : pthread_mutex_trylock)(&write_lock) != 0) {
       if (!test) release_auth(auth, false);
       return -1;
@@ -272,7 +275,7 @@ private:
 public:
   int lock(lock_auth_base *auth, bool read, bool /*block*/ = true, bool test = false) {
     if (!read) return -1;
-    if (!register_auth(auth, read, false, false, false, test)) return -1;
+    if (!register_auth(auth, read, false, false, test)) return -1;
     //NOTE: this should be atomic
     int new_counter = ++counter;
     //(check the copy!)

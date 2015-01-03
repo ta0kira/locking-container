@@ -59,15 +59,14 @@ class lock_auth : public lock_auth_base {
 public:
   lock_auth() : writing(0) {}
 
-  bool lock_allowed(bool /*Read*/, bool /*Block*/ = true) const {
-    return !writing;
-  }
+  virtual int  writing_count() const { return writing; }
+  virtual bool always_write()  const { return true; }
 
 private:
   lock_auth(const lock_auth&);
   lock_auth &operator = (const lock_auth&);
 
-  bool register_auth(bool /*Read*/, bool /*Block*/, bool /*LockOut*/, bool InUse, bool TestAuth) {
+  bool register_auth(bool /*Read*/, bool /*LockOut*/, bool InUse, bool TestAuth) {
     if (writing && InUse) return false;
     if (TestAuth) return true;
     ++writing;
@@ -88,18 +87,14 @@ class lock_auth <rw_lock> : public lock_auth_base {
 public:
   lock_auth() : reading(0), writing(0) {}
 
-  bool lock_allowed(bool Read, bool Block = true) const {
-    if (!Block && !Read) return true;
-    if (Read) return !writing;
-    else      return !writing && !reading;
-  }
+  virtual int reading_count() const { return reading; }
+  virtual int writing_count() const { return writing; }
 
 private:
   lock_auth(const lock_auth&);
   lock_auth &operator = (const lock_auth&);
 
-  bool register_auth(bool Read, bool Block, bool LockOut, bool InUse, bool TestAuth) {
-    if (!Block && !Read)                 return true;
+  bool register_auth(bool Read, bool LockOut, bool InUse, bool TestAuth) {
     if (writing && InUse)                return false;
     if (reading && !Read && InUse)       return false;
     if ((reading || writing) && LockOut) return false;
@@ -134,10 +129,11 @@ class lock_auth <r_lock> : public lock_auth_base {
 public:
   lock_auth() : reading(0) {}
 
-  bool lock_allowed(bool Read, bool /*Block*/ = true) const { return Read; }
+  virtual int  reading_count() const { return reading; }
+  virtual bool always_read()   const { return true; }
 
 private:
-  bool register_auth(bool Read, bool /*Block*/, bool LockOut, bool /*InUse*/, bool TestAuth) {
+  bool register_auth(bool Read, bool LockOut, bool /*InUse*/, bool TestAuth) {
     if (!Read)              return false;
     if (reading && LockOut) return false;
     if (TestAuth) return true;
@@ -157,11 +153,8 @@ private:
 
 template <>
 class lock_auth <broken_lock> : public lock_auth_base {
-public:
-  bool lock_allowed(bool /*Read*/, bool /*Block*/ = true) const { return false; }
-
 private:
-  bool register_auth(bool /*Read*/, bool /*Block*/, bool /*LockOut*/, bool /*InUse*/, bool /*TestAuth*/) { return false; }
+  bool register_auth(bool /*Read*/, bool /*LockOut*/, bool /*InUse*/, bool /*TestAuth*/) { return false; }
   void release_auth(bool /*Read*/) { assert(false); }
 };
 
