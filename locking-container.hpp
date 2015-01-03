@@ -38,14 +38,14 @@
  *
  *   - 'lock_auth <rw_lock>': This auth. type allows the caller to hold multiple
  *     read locks, or a single write lock, but not both. Note that if another
- *     thread is waiting for a read lock on the container and the caller already
- *     has a read lock then the lock will be rejected. Two exception to these
- *     rules are: if the container to be locked currently has no other locks, or
- *     if the call isn't blocking and it's for a write lock.
+ *     thread is waiting for a write lock on the container and the caller
+ *     already has a read lock then the lock will be rejected. Two exception to
+ *     these rules are: if the container to be locked currently has no other
+ *     locks, or if the call isn't blocking and it's for a write lock.
  *
  *   - 'lock_auth <r_lock>': This auth. type allows the caller to hold multiple
  *     read locks, but no write locks. Note that if another thread is waiting
- *     for a read lock on the container and the caller already has a read lock
+ *     for a write lock on the container and the caller already has a read lock
  *     then the lock will be rejected.
  *
  *   - 'lock_auth <w_lock>': This auth. type allows the caller to hold no more

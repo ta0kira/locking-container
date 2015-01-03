@@ -6,6 +6,7 @@
  * means a bug in the code.
  */
 
+#include <stdio.h>
 #include <assert.h>
 
 #include "locking-container.hpp"
@@ -15,8 +16,8 @@ int main() {
   //default: use 'rw_lock'
   typedef locking_container <int> protected_int0;
 
-  //use 'r_lock' instead
-  typedef locking_container <int, r_lock> protected_int1;
+  //use 'w_lock' instead
+  typedef locking_container <int, w_lock> protected_int1;
 
   //the two types above share the same base class because they both protect 'int'
   typedef protected_int0::base base;
@@ -65,11 +66,14 @@ int main() {
   assert(read);
 
   {
-    //this should fail, since 'auth' still holds a read lock
+    //'auth' still holds a read lock, but 'data0' isn't in use, so this should succeed
     base::proxy write2 = data0.get_auth(auth);
-    //(make sure the reason for failure is what we expected)
-    if (!write2) assert(!auth->lock_allowed(false));
-  } //<-- 'write2' goes out of scope, which would unlock 'data0' if a lock was obtained
+    assert(write2);
+
+    //this is a potential deadlock, since 'auth' has a write lock and 'data1' is in use
+    base::const_proxy read2 = data1.get_auth_const(auth);
+    assert(!read2);
+  } //<-- 'write2' goes out of scope, which unlocks 'data0'
 
   {
     //copy the proxy object
