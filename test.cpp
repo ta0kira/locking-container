@@ -17,7 +17,7 @@
 #include "locking-container.hpp"
 
 //use this definition if you want the simple test
-#define THREAD_TYPE thread
+#define THREAD_TYPE thread_multi
 //use this definition if you want the multi-lock test
 //#define THREAD_TYPE thread_multi
 
@@ -65,6 +65,8 @@ int main()
     assert(write);
     *write = -1;
   } //<-- proxy goes out of scope and unlocks 'my_data' here (you can also 'write.clear()')
+
+  sleep(3);
 
   for (long i = 0; (unsigned) i < sizeof threads / sizeof(pthread_t); i++) {
     send_output("?join %li\n", i);
@@ -164,9 +166,13 @@ static void *thread(void *nv) {
 static void *thread_multi(void *nv) {
   if (pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL) != 0) return NULL;
 
-  protected_int::auth_type auth(protected_int::new_auth());
+  //NOTE: multi-locking will work with either 'lock_auth <w_lock>' or
+  //'lock_auth <rw_lock>'; however, 'lock_auth <w_lock>' will prevent a thread
+  //from holding mutiple read locks at a time when that thread doesn't hold the
+  //multi-lock.
+  protected_int::auth_type auth(new lock_auth <rw_lock>);
 
-  long n = (long) nv;
+  long n = (long) nv, success = 0, failure = 0;
   struct timespec wait = { 0, (10 + n) * 1 * 1000 * 1000 };
   nanosleep(&wait, NULL);
 
@@ -180,27 +186,42 @@ static void *thread_multi(void *nv) {
       }
 
       send_output("+read0 %li (%i) -> %i\n", n, read0.last_lock_count(), *read0);
-      if (*read0 < 0) return NULL;
+      if (*read0 < 0) {
+        send_output("diff %li %i %i\n", n, success, -failure);
+        return NULL;
+      }
       nanosleep(&wait, NULL);
+
+      //NOTE: if the auth. type is 'lock_auth <w_lock>', this second read lock
+      //will always fail because 'multi_lock' is already in use! (this is because
+      //'lock_auth <w_lock>' records the lock above as a write lock; when an
+      //auth. object holds a write lock, it can only obtain new read or write
+      //locks if the container to be locked has no other locks.)
 
       send_output("?read1 %li\n", n);
       protected_int::const_proxy read1 = my_data2.get_multi_const(multi_lock, auth);
       if (!read1) {
+        //(track the number of successes vs. failures for 'read1')
+        ++failure;
         send_output("!read1 %li\n", n);
         //NOTE: due to deadlock prevention, 'auth' will reject a lock if another
         //thread is waiting for a write lock for 'multi_lock' because this
         //thread already holds a read lock (on 'my_data'). (this could easily
         //lead to a deadlock if 'get_multi_const' above blocked.) this isn't a
-        //catastrophic error, so we just break out of this loop.
-        break;
+        //catastrophic error, so we just skip the operation here.
+      } else {
+        ++success;
+        send_output("+read1 %li (%i) -> %i\n", n, read1.last_lock_count(), *read1);
+        if (*read1 < 0) {
+          send_output("diff %li %i %i\n", n, success, -failure);
+          return NULL;
+        }
+        nanosleep(&wait, NULL);
+
+        read1.clear();
+        send_output("-read1 %li\n", n);
       }
 
-      send_output("+read1 %li (%i) -> %i\n", n, read1.last_lock_count(), *read1);
-      if (*read1 < 0) return NULL;
-      nanosleep(&wait, NULL);
-
-      read1.clear();
-      send_output("-read1 %li\n", n);
       read0.clear();
       send_output("-read0 %li\n", n);
       nanosleep(&wait, NULL);
@@ -216,7 +237,10 @@ static void *thread_multi(void *nv) {
       }
 
       send_output("+write %li (%i)\n", n, write.last_lock_count());
-      if (*write < 0) return NULL;
+      if (*write < 0) {
+        send_output("diff %li %i %i\n", n, success, -failure);
+        return NULL;
+      }
       *write = n;
       nanosleep(&wait, NULL);
 
@@ -241,12 +265,16 @@ static void *thread_multi(void *nv) {
     }
     send_output("+multi0 %li\n", n);
 
-    //NOTE: you can't use 'get_multi' or 'get_multi_const' while 'multi_lock' is
-    //locked! this is because 'multi_lock' won't allow new read locks while this
-    //thread holds a write lock on it.
+    //NOTE: even though this thread holds a write lock on 'multi_lock', it will
+    //still allow new read locks from this thread. this is why 'get_multi' can
+    //be used below.
+
+    //NOTE: even if the auth. type is 'lock_auth <w_lock>', this thread should
+    //be able to obtain multiple write locks, since the containers aren't being
+    //used by any other threads.
 
     send_output("?multi1 %li\n", n);
-    protected_int::proxy write1 = my_data.get_auth(auth);
+    protected_int::proxy write1 = my_data.get_multi(multi_lock, auth);
     if (!write1) {
       send_output("!multi1 %li\n", n);
       return NULL;
@@ -259,26 +287,26 @@ static void *thread_multi(void *nv) {
     //'my_data2'. in fact, that's the only purpose of using 'multi_lock'!
 
     send_output("?multi2 %li\n", n);
-    protected_int::proxy write2 = my_data2.get_auth(auth);
+    protected_int::proxy write2 = my_data2.get_multi(multi_lock, auth);
     if (!write2) {
       send_output("!multi2 %li\n", n);
       return NULL;
     }
     send_output("+multi2 %li\n", n);
 
+    //NOTE: since 'get_multi' keeps track of new locks on 'my_data' and
+    //'my_data2', the write lock on 'multi_lock' can be cleared. this allows
+    //other threads to access those objects as they become free again.
+
+    multi.clear();
+    send_output("-multi0 %li\n", n);
+
     *write1 = *write2 = 100 + n;
 
+    nanosleep(&wait, NULL);
     write2.clear();
     send_output("-multi2 %li\n", n);
     write1.clear();
     send_output("-multi1 %li\n", n);
-
-    //NOTE: since you can't use 'get_multi' above, 'multi_lock' can't track the
-    //new locks that are made on 'my_data' and 'my_data2'; therefore,
-    //'multi_lock' must stay locked until the other locks are released.
-    //(otherwise, 'multi_lock' could give a write lock to another thread while
-    //'my_data' or 'my_data2' are still locked.)
-    multi.clear();
-    send_output("-multi0 %li\n", n);
   }
 }

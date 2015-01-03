@@ -49,7 +49,10 @@
  *     default lock used. A write lock can only be obtained if no other readers
  *     or writers have a lock. If a thread attempts to obtain a write lock and
  *     there are readers, it will block until all readers leave, blocking out
- *     all new readers and writers in the meantime.
+ *     all new readers and writers in the meantime. If 'lock_auth <rw_lock>'
+ *     authorization is used (see below), the holder of the write lock can
+ *     subsequently obtain a new read lock for the same container; otherwise,
+ *     all read locks will be denied while the write lock is in place.
  *
  *   - 'r_lock': This lock allows multiple readers, but it never allows writers.
  *     This might be useful if you have a container that will never be written
@@ -71,9 +74,9 @@
  *   - 'lock_auth <rw_lock>': This auth. type allows the caller to hold multiple
  *     read locks, or a single write lock, but not both. Note that if another
  *     thread is waiting for a write lock on the container and the caller
- *     already has a read lock then the lock will be rejected. Two exception to
- *     these rules are: if the container to be locked currently has no other
- *     locks, or if the call isn't blocking and it's for a write lock.
+ *     already has a read lock then the lock will be rejected. Two exceptions to
+ *     these rules are: 1) if the container to be locked currently has no other
+ *     locks; 2) if the call isn't blocking and it's for a write lock.
  *
  *   - 'lock_auth <r_lock>': This auth. type allows the caller to hold multiple
  *     read locks, but no write locks. Note that if another thread is waiting
@@ -107,9 +110,10 @@
  *
  *   - To copy a container, you must first get a proxy from it, then construct
  *     the copy with the corresponding object. To assign one container to
- *     another, you must first get proxies to both objects. Because of this,
- *     you cannot copy a 'const' container because there is no 'const' way to
- *     get a proxy.
+ *     another, you must first get proxies to both objects. (The
+ *     'try_copy_container' global functions manage the latter automatically.)
+ *     Because of this, you cannot copy a 'const' container because there is no
+ *     'const' way to get a proxy.
  */
 
 

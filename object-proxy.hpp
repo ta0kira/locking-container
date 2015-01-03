@@ -96,8 +96,7 @@ private:
       pointer    = NULL;
       lock_count = 0;
       if (unlock1 && locks) locks->unlock(auth, read);
-      //NOTE: pass 'NULL" as authorization because the lock wasn't recorded
-      if (unlock2 && multi) multi->unlock(NULL, true);
+      if (unlock2 && multi) multi->unlock(auth, true, true);
       auth  = NULL;
       locks = NULL;
       multi = NULL;
