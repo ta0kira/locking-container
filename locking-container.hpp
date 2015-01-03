@@ -310,7 +310,7 @@ private:
 
 /*! \brief Attempt to copy one container's contents into another.
  *
- * @note This will attempt to obtain locks for both objects, and will fail if
+ * @note This will attempt to obtain locks for both containers, and will fail if
  * either lock operation fails.
  *
  * \param Left container being assigned to
@@ -350,9 +350,12 @@ inline bool try_copy_container(locking_container_base <Type1> &Left,
 
 /*! \brief Attempt to copy one container's contents into another.
  *
- * @note This will attempt to get a write lock for the multi-lock object, and
- * also locks for both objects. This will fail if any of lock operation fails.
- * Specifically, this will fail if the auth. object holds any other locks.
+ * @note This will attempt to obtain locks for both containers using the
+ * \ref null_container_base object, and will fail if either lock operation
+ * fails.
+ * \attention This will almost certainly fail if the caller doesn't have a write
+ * lock on the \ref null_container_base passed. This also assumes that no other
+ * threads hold any locks on either of the containers.
  *
  * \param Left container being assigned to
  * \param Right container being assigned
