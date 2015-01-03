@@ -39,7 +39,7 @@ int main()
 {
   //create some threads
   pthread_t threads[THREADS];
-  for (long i = 0; i < sizeof threads / sizeof(pthread_t); i++) {
+  for (long i = 0; (unsigned) i < sizeof threads / sizeof(pthread_t); i++) {
     send_output("start %li\n", i);
     threads[i] = pthread_t();
     if (pthread_create(threads + i, NULL, &THREAD_TYPE, (void*) i) != 0) {
@@ -58,7 +58,7 @@ int main()
     *write = -1;
   } //<-- proxy goes out of scope and unlocks 'my_data' here (you can also 'write.clear()')
 
-  for (long i = 0; i < sizeof threads / sizeof(pthread_t); i++) {
+  for (long i = 0; (unsigned) i < sizeof threads / sizeof(pthread_t); i++) {
     send_output("?join %li\n", i);
     pthread_join(threads[i], NULL);
     send_output("+join %li\n", i);
