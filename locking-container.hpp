@@ -2,12 +2,12 @@
  * (c) 2014-2015, Kevin P. Barry [ta0kira@gmail.com]
  *
  *
- * This file provides a template class that protects access to an object with a
- * pthread mutex. Conventional mutex-protection methods are susceptible to bugs
- * caused by forgetting (or neglecting) to lock/unlock the mutex. This class
- * eliminates the need to remember, because the only access to the protected
- * object is via a proxy object that keeps the mutex locked until the proxy
- * destructs.
+ * This file provides a template class that protects access to an object with
+ * locks of various types. Conventional mutex-protection methods are susceptible
+ * to bugs caused by forgetting (or neglecting) to lock/unlock the mutex. This
+ * class eliminates the need to remember because the only access to the
+ * protected object is via a proxy object that holds the lock until the
+ * reference count of the proxy reaches 0 (like a shared pointer).
  *
  * This header contains one main class 'locking_container <class, class>', where
  * the first argument is the type of object being protected, and the second is
@@ -37,20 +37,15 @@
  *   - You might need to link your executable with libpthread after compiling.
  *
  *   - The assignment operators for 'locking_container' can cause assertions if
- *     the mutex can't be locked. The assignment operators are too useful to
- *     eliminate, and assertions seem to be the only logical behavior, with the
- *     other choice being silent failure to assign.
+ *     the container can't be locked. The assignment operators should therefore
+ *     only be used if there is no logical behavior other than an assertion if
+ *     assignment fails.
  */
 
 
 /*! \file locking-container.hpp
+ *  \brief C++ container for data protection in multithreaded programs.
  *  \author Kevin P. Barry
- *  \brief Mutex-protected Container Class.
- *
- * The class in this header is used to protect objects with a mutex. The class
- * provides access via a proxy object that locks the mutex upon construction and
- * unlocks it upon the destruction of the last reference (see
- * \ref locking_container::get.)
  */
 
 #ifndef locking_container_hpp
@@ -126,12 +121,13 @@ struct locking_container_base {
 
 
 /*! \class locking_container
-    \brief Container to protect an object with a mutex.
+    \brief C++ container class with automatic unlocking, concurrent reads, and
+    deadlock prevention.
 
-    Each instance of this class contains a mutex and an encapsulated object of
+    Each instance of this class contains a lock and an encapsulated object of
     the type denoted by the template parameter. The \ref locking_container::get
     and \ref locking_container::get_const functions provide a proxy object (see
-    \ref object_proxy) that automatically locks and unlocks the mutex to simplify
+    \ref object_proxy) that automatically locks and unlocks the lock to simplify
     code that accesses the encapsulated object.
     \attention This class contains a mutable member, which means that a memory
     page containing even a const instance should not be remapped as read-only.
@@ -165,8 +161,7 @@ public:
   /*! \brief Copy constructor.
    *
    * \param Copy Instance to copy.
-   * \attention This function will block if the mutex for "Copy" is
-   * locked.
+   * \attention This function will block if "Copy" is locked.
    */
   explicit __attribute__ ((deprecated)) locking_container(const locking_container &Copy) : contained() {
     auto_copy(Copy, contained);
@@ -180,11 +175,11 @@ public:
   /*! \brief Assignment operator.
    *
    * \param Copy Instance to copy.
-   * \attention This function will block if the mutex for either object is
-   * locked. The mutex of "Copy" is locked first, then the mutex for this
-   * object. The mutex for "Copy" will remain locked until the locking of
-   * the mutex for this object is either succeeds or fails.
-   * \attention This will cause an assertion if the mutex can't be locked.
+   * \attention This function will block if the lock for either object is
+   * locked. The lock for "Copy" is locked first, then the lock for this object.
+   * The lock for "Copy" will remain locked until the locking of the lock for
+   * this object is either succeeds or fails.
+   * \attention This will cause an assertion if the lock can't be locked.
    *
    * \return *this
    */
@@ -211,7 +206,7 @@ public:
 
   /*! \brief Destructor.
    *
-   * \attention This will block if the mutex is locked.
+   * \attention This will block if the container is locked.
    */
   ~locking_container() {
     proxy self = this->get();
@@ -224,20 +219,16 @@ public:
 
   /*! \brief Retrieve a proxy to the contained object.
    *
-   * Retrieve a proxy object that automatically manages mutex locking and
-   * unlocking. If "Block" is true then the call blocks until the mutex
-   * can be locked. If it's false, the call returns immediately, with the
-   * possibility of not obtaining a lock.
    * @see object_proxy
    * \attention Always check that the returned object contains a valid
-   * reference with object_proxy::operator!. The reference will always be
-   * invalid if a mutex lock hasn't been obtained.
+   * pointer with object_proxy::operator!. The reference will always be
+   * invalid if a lock hasn't been obtained.
    * \attention The returned object should only be passed by value, and it
    * should only be passed within the same thread that
    * \ref locking_container::get was called from. This is because the proxy
    * object uses reference counting that isn't reentrant.
    * \param Authorization Authorization object to prevent deadlocks.
-   * \param Block Should the call block for a mutex lock?
+   * \param Block Should the call block for a lock?
    *
    * \return proxy object
    */
@@ -375,10 +366,10 @@ private:
     \brief Proxy object for \ref locking_container access.
 
     Instances of this class are returned by \ref locking_container instances as
-    proxy objects that access the contained object. The mutex of the
-    \ref locking_container is locked upon return of this object and references to
-    the returned object are counted as it's copied. Upon destruction of the last
-    reference the mutex is unlocked.
+    proxy objects that access the contained object. \ref locking_container is
+    locked upon return of this object and references to the returned object are
+    counted as it's copied. Upon destruction of the last reference the container
+    is unlocked.
  */
 
 template <class Type>
@@ -397,12 +388,12 @@ public:
   */
   //@{
 
-  /*! \brief Clear the reference and unlock the mutex.
+  /*! \brief Clear the reference and unlock the container.
    *
-   * The mutex isn't unlocked until the last reference is destructed. This
+   * The container isn't unlocked until the last reference is destructed. This
    * will clear the reference for this object alone and decrement the
    * reference count by one. If the new reference count is zero then the
-   * mutex is unlocked.
+   * container is unlocked.
    *
    * \return *this
    */
@@ -477,12 +468,12 @@ public:
   */
   //@{
 
-  /*! \brief Clear the reference and unlock the mutex.
+  /*! \brief Clear the reference and unlock the container.
    *
-   * The mutex isn't unlocked until the last reference is destructed. This
+   * The container isn't unlocked until the last reference is destructed. This
    * will clear the reference for this object alone and decrement the
    * reference count by one. If the new reference count is zero then the
-   * mutex is unlocked.
+   * container is unlocked.
    *
    * \return *this
    */
