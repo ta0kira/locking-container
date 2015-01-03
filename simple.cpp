@@ -88,6 +88,13 @@ int main() {
   read.clear();
 
   //use 'try_copy_container' to copy containers (attempts to lock both containers)
-  bool success = try_copy_container(data0, data1, auth);
-  assert(success);
+  bool success1 = try_copy_container(data0, data1, auth);
+  assert(success1);
+
+  //use 'try_copy_container' to copy containers with multi-locking
+  //NOTE: this thread must hold a write lock on 'multi_lock'!
+  null_container multi_lock;
+  null_container_base::proxy multi = multi_lock.get_auth(auth);
+  bool success2 = try_copy_container(data0, data1, multi_lock, auth);
+  assert(success2);
 }
