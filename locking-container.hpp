@@ -214,13 +214,13 @@ public:
   virtual inline ~locking_container_base() {}
 
 protected:
-  virtual write_proxy get_write_multi(lock_base */*multi_lock*/,
-    lock_auth_base */*authorization*/, bool /*block*/) {
+  virtual write_proxy get_write_multi(lock_base* /*multi_lock*/,
+    lock_auth_base* /*authorization*/, bool /*block*/) {
     return write_proxy();
   }
 
-  virtual read_proxy get_read_multi(lock_base */*multi_lock*/,
-    lock_auth_base */*authorization*/, bool /*block*/) {
+  virtual read_proxy get_read_multi(lock_base* /*multi_lock*/,
+    lock_auth_base* /*authorization*/, bool /*block*/) {
     return read_proxy();
   }
 };
