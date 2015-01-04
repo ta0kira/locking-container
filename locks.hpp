@@ -118,6 +118,7 @@ public:
     if (read) {
       //get a read lock
       ++readers_waiting;
+      assert(readers_waiting > 0);
       //NOTE: 'auth' is expected to prevent a deadlock if the caller already has
       //a read lock and there is a writer waiting
       if (!writer_reads) while (writer || writer_waiting) {
@@ -137,6 +138,7 @@ public:
     } else {
       //if the caller isn't the first in line for writing, wait until it is
       ++readers_waiting;
+      assert(readers_waiting > 0);
       while (writer_waiting) {
         //NOTE: use 'read_wait' here, since that's what a write unlock broadcasts on
         //NOTE: another thread should be blocking in 'write_wait' below
@@ -270,8 +272,9 @@ class w_lock : public lock_base {
 public:
   using lock_base::count_type;
 
-  w_lock() : locked(false) {
-    pthread_mutex_init(&write_lock, NULL);
+  w_lock() : writer(false), writers_waiting(0) {
+    pthread_mutex_init(&master_lock, NULL);
+    pthread_cond_init(&write_wait, NULL);
   }
 
 private:
@@ -280,32 +283,56 @@ private:
 
 public:
   count_type lock(lock_auth_base *auth, bool /*read*/, bool block = true, bool test = false) {
+    if (pthread_mutex_lock(&master_lock) != 0) return -1;
     //NOTE: 'false' is passed instead of 'read' because this can lock out other readers
-    if (!register_or_test_auth(auth, false, locked, locked, test)) return -1;
-    if ((block? pthread_mutex_lock : pthread_mutex_trylock)(&write_lock) != 0) {
-      if (!test) release_auth(auth, false);
+    if (!register_or_test_auth(auth, false, writer, writer, test)) {
+      pthread_mutex_unlock(&master_lock);
       return -1;
     }
-    assert(!locked);
-    locked = true;
+    if (!block && writer) {
+      if (!test) release_auth(auth, false);
+      pthread_mutex_unlock(&master_lock);
+      return -1;
+    }
+    ++writers_waiting;
+    assert(writers_waiting > 0);
+    while (writer) {
+      if (pthread_cond_wait(&write_wait, &master_lock) != 0) {
+        if (!test) release_auth(auth, false);
+        --writers_waiting;
+        pthread_mutex_unlock(&master_lock);
+        return -1;
+      }
+    }
+    --writers_waiting;
+    writer = true;
+    pthread_mutex_unlock(&master_lock);
     return 0;
   }
 
   count_type unlock(lock_auth_base *auth, bool /*read*/, bool test = false) {
+    if (pthread_mutex_lock(&master_lock) != 0) return -1;
     if (!test) release_auth(auth, false);
-    assert(locked);
-    locked = false;
-    return (pthread_mutex_unlock(&write_lock) == 0)? 0 : -1;
+    assert(writer);
+    writer = false;
+    if (writers_waiting) {
+      pthread_cond_broadcast(&write_wait);
+    }
+    pthread_mutex_unlock(&master_lock);
+    return 0;
   }
 
   ~w_lock() {
-    assert(!locked);
-    pthread_mutex_destroy(&write_lock);
+    assert(!writer && !writers_waiting);
+    pthread_mutex_destroy(&master_lock);
+    pthread_cond_destroy(&write_wait);
   }
 
 private:
-  bool            locked;
-  pthread_mutex_t write_lock;
+  bool            writer;
+  count_type      writers_waiting;
+  pthread_mutex_t master_lock;
+  pthread_cond_t  write_wait;
 };
 
 
