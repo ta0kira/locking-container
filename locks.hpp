@@ -57,12 +57,25 @@ public:
   virtual bool       always_read()   const { return false; }
   virtual bool       always_write()  const { return false; }
 
+  /*! Attempt to predict if a read authorization would be granted.*/
+  inline bool guess_read_allowed(bool lock_out = true, bool in_use = true) {
+    return this->register_auth(true, lock_out, in_use, true);
+  }
+
+  /*! Attempt to predict if a write authorization would be granted.*/
+  inline bool guess_write_allowed(bool lock_out = true, bool in_use = true) {
+    return this->register_auth(false, lock_out, in_use, true);
+  }
+
   virtual inline ~lock_auth_base() {}
 
 private:
   friend class lock_base;
 
+  /*! Obtain lock authorization. If test_auth is true, this should not have side-effects.*/
   virtual bool register_auth(bool read, bool lock_out, bool in_use, bool test_auth) = 0;
+
+  /*! Release lock authorization.*/
   virtual void release_auth(bool read) = 0;
 };
 
@@ -95,6 +108,15 @@ protected:
 
 /*! \class rw_lock
     \brief Lock object that allows multiple readers at once.
+ *
+ * This lock allows multiple readers at a time. This is the default lock used.
+ * A write lock can only be obtained if no other readers or writers have a lock.
+ * If a thread attempts to obtain a write lock and there are readers, it will
+ * block until all readers leave, blocking out all new readers and writers in
+ * the meantime. If 'lock_auth <rw_lock>' authorization is used (see below), the
+ * holder of the write lock can subsequently obtain a new read lock for the same
+ * container; otherwise, all read locks will be denied while the write lock is
+ * in place.
  */
 
 class rw_lock : public lock_base {
@@ -225,6 +247,10 @@ private:
 
 /*! \class r_lock
     \brief Lock object that allows multiple readers but no writers.
+ *
+ * This lock allows multiple readers, but it never allows writers. This might be
+ * useful if you have a container that will never be written to but you
+ * nevertheless need to retain the same container semantics.
  */
 
 class r_lock : public lock_base {
@@ -269,6 +295,11 @@ private:
 
 /*! \class w_lock
     \brief Lock object that allows only one thread access at a time.
+ *
+ * This lock doesn't make a distinction between readers and writers; only one
+ * thread can hold a lock at any given time. This should operate faster if you
+ * don't need read locks. Note that, for the purposes of deadlock prevention,
+ * this treats all locks as write locks.
  */
 
 class w_lock : public lock_base {
@@ -316,6 +347,9 @@ private:
 
 /*! \class broken_lock
     \brief Lock object that is permanently broken.
+ *
+ * This is mostly a joke; however, you can use it to test pathological cases.
+ * This lock will always fail to lock and unlock.
  */
 
 struct broken_lock : public lock_base {

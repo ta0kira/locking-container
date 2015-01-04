@@ -66,8 +66,6 @@ int main()
     *write = -1;
   } //<-- proxy goes out of scope and unlocks 'my_data' here (you can also 'write.clear()')
 
-  sleep(3);
-
   for (long i = 0; (unsigned) i < sizeof threads / sizeof(pthread_t); i++) {
     send_output("?join %li\n", i);
     pthread_join(threads[i], NULL);
@@ -212,10 +210,6 @@ static void *thread_multi(void *nv) {
       } else {
         ++success;
         send_output("+read1 %li (%i) -> %i\n", n, read1.last_lock_count(), *read1);
-        if (*read1 < 0) {
-          send_output("diff %li %i %i\n", n, success, -failure);
-          return NULL;
-        }
         nanosleep(&wait, NULL);
 
         read1.clear();

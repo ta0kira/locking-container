@@ -43,56 +43,13 @@
  *
  * This header contains one main class 'locking_container <class, class>', where
  * the first argument is the type of object being protected, and the second is
- * the type of lock to be used. A few lock choices are provided:
- *
- *   - 'rw_lock': This lock allows multiple readers at a time. This is the
- *     default lock used. A write lock can only be obtained if no other readers
- *     or writers have a lock. If a thread attempts to obtain a write lock and
- *     there are readers, it will block until all readers leave, blocking out
- *     all new readers and writers in the meantime. If 'lock_auth <rw_lock>'
- *     authorization is used (see below), the holder of the write lock can
- *     subsequently obtain a new read lock for the same container; otherwise,
- *     all read locks will be denied while the write lock is in place.
- *
- *   - 'r_lock': This lock allows multiple readers, but it never allows writers.
- *     This might be useful if you have a container that will never be written
- *     to but you nevertheless need to retain the same container semantics.
- *
- *   - 'w_lock': This lock doesn't make a distinction between readers and
- *     writers; only one thread can hold a lock at any given time. This should
- *     operate faster if you don't need read locks. Note that, for the purposes
- *     of deadlock prevention, this treats all locks as write locks.
- *
- *   - 'broken_lock': This is mostly a joke; however, you can use it to test
- *     pathological cases. This lock will always fail to lock and unlock.
+ * the type of lock to be used. A few lock choices are provided. See
+ * locks.hpp for more information.
  *
  * Each lock type has a corresponding 'lock_auth' specialization for use with
  * deadlock prevention. All of them have (somewhat) identical behavior to their
  * corresponding lock types, as far as how many read and write locks can be held
- * at a given time.
- *
- *   - 'lock_auth <rw_lock>': This auth. type allows the caller to hold multiple
- *     read locks, or a single write lock, but not both. Note that if another
- *     thread is waiting for a write lock on the container and the caller
- *     already has a read lock then the lock will be rejected. Two exceptions to
- *     these rules are: 1) if the container to be locked currently has no other
- *     locks; 2) if the call isn't blocking and it's for a write lock.
- *
- *   - 'lock_auth <r_lock>': This auth. type allows the caller to hold multiple
- *     read locks, but no write locks. Note that if another thread is waiting
- *     for a write lock on the container and the caller already has a read lock
- *     then the lock will be rejected. Use this auth. type if you want to ensure
- *     that a thread doesn't obtain a write lock on any container.
- *
- *   - 'lock_auth <w_lock>': This auth. type allows the caller to hold no more
- *     than one lock at a time, regardless of lock type. An exception to this
- *     behavior is if the container to be locked currently has no other locks.
- *     Use this auth. type if you are only using containers that use 'w_lock',
- *     or if you want to disallow multiple read locks on containers that use
- *     'rw_lock' or 'r_lock'.
- *
- *   - 'lock_auth <broken_lock>': This auth. type doesn't allow the caller to
- *     obtain any locks.
+ * at a given time. See lock-auth.hpp for more information.
  *
  * If you want both deadlock prevention and the ability for threads to hold
  * a write lock plus one or more other locks at the same time, you can create a

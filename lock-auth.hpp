@@ -56,6 +56,16 @@
 
 template <class> class lock_auth;
 
+/*! \class lock_auth <rw_lock>
+ *
+ * This auth. type allows the caller to hold multiple read locks, or a single
+ * write lock, but not both. Note that if another thread is waiting for a write
+ * lock on the container and the caller already has a read lock then the lock
+ * will be rejected. Two exceptions to these rules are: 1) if the container to
+ * be locked currently has no other locks; 2) if the call isn't blocking and
+ * it's for a write lock.
+ */
+
 template <>
 class lock_auth <rw_lock> : public lock_auth_base {
 public:
@@ -105,6 +115,15 @@ private:
   count_type reading, writing;
 };
 
+/*! \class lock_auth <r_lock>
+ *
+ * This auth. type allows the caller to hold multiple read locks, but no write
+ * locks. Note that if another thread is waiting for a write lock on the
+ * container and the caller already has a read lock then the lock will be
+ * rejected. Use this auth. type if you want to ensure that a thread doesn't
+ * obtain a write lock on any container.
+ */
+
 template <>
 class lock_auth <r_lock> : public lock_auth_base {
 public:
@@ -139,6 +158,15 @@ private:
 
   count_type reading;
 };
+
+/*! \class lock_auth <w_lock>
+ *
+ * This auth. type allows the caller to hold no more than one lock at a time,
+ * regardless of lock type. An exception to this behavior is if the container to
+ * be locked currently has no other locks. Use this auth. type if you are only
+ * using containers that use 'w_lock', or if you want to disallow multiple read
+ * locks on containers that use 'rw_lock' or 'r_lock'.
+ */
 
 template <>
 class lock_auth <w_lock> : public lock_auth_base {
@@ -175,6 +203,11 @@ private:
 
   count_type writing;
 };
+
+/*! \class lock_auth <broken_lock>
+ *
+ * This auth. type doesn't allow the caller to obtain any locks.
+ */
 
 template <>
 class lock_auth <broken_lock> : public lock_auth_base {
