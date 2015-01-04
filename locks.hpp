@@ -39,45 +39,7 @@
 #include <assert.h>
 #include <pthread.h>
 
-
-/*! \class lock_auth_base
-    \brief Base class for lock authorization classes.
-    @see lock_auth
- */
-
-class lock_base;
-
-class lock_auth_base {
-public:
-  typedef long count_type;
-  typedef std::shared_ptr <lock_auth_base> auth_type;
-
-  virtual count_type reading_count() const { return 0; }
-  virtual count_type writing_count() const { return 0; }
-  virtual bool       always_read()   const { return false; }
-  virtual bool       always_write()  const { return false; }
-
-  /*! Attempt to predict if a read authorization would be granted.*/
-  inline bool guess_read_allowed(bool lock_out = true, bool in_use = true) {
-    return this->register_auth(true, lock_out, in_use, true);
-  }
-
-  /*! Attempt to predict if a write authorization would be granted.*/
-  inline bool guess_write_allowed(bool lock_out = true, bool in_use = true) {
-    return this->register_auth(false, lock_out, in_use, true);
-  }
-
-  virtual inline ~lock_auth_base() {}
-
-private:
-  friend class lock_base;
-
-  /*! Obtain lock authorization. If test_auth is true, this should not have side-effects.*/
-  virtual bool register_auth(bool read, bool lock_out, bool in_use, bool test_auth) = 0;
-
-  /*! Release lock authorization.*/
-  virtual void release_auth(bool read) = 0;
-};
+#include "lock-auth.hpp"
 
 
 /*! \class lock_base

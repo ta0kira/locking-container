@@ -35,7 +35,45 @@
 
 #include <assert.h>
 
-#include "locks.hpp"
+
+/*! \class lock_auth_base
+    \brief Base class for lock authorization classes.
+    @see lock_auth
+ */
+
+class lock_base;
+
+class lock_auth_base {
+public:
+  typedef long count_type;
+  typedef std::shared_ptr <lock_auth_base> auth_type;
+
+  virtual count_type reading_count() const { return 0; }
+  virtual count_type writing_count() const { return 0; }
+  virtual bool       always_read()   const { return false; }
+  virtual bool       always_write()  const { return false; }
+
+  /*! Attempt to predict if a read authorization would be granted.*/
+  inline bool guess_read_allowed(bool lock_out = true, bool in_use = true) {
+    return this->register_auth(true, lock_out, in_use, true);
+  }
+
+  /*! Attempt to predict if a write authorization would be granted.*/
+  inline bool guess_write_allowed(bool lock_out = true, bool in_use = true) {
+    return this->register_auth(false, lock_out, in_use, true);
+  }
+
+  virtual inline ~lock_auth_base() {}
+
+private:
+  friend class lock_base;
+
+  /*! Obtain lock authorization. If test_auth is true, this should not have side-effects.*/
+  virtual bool register_auth(bool read, bool lock_out, bool in_use, bool test_auth) = 0;
+
+  /*! Release lock authorization.*/
+  virtual void release_auth(bool read) = 0;
+};
 
 
 /*! \class lock_auth
@@ -52,8 +90,6 @@
     already holds a lock.
  */
 
-//NOTE: 'lock_auth_base' is defined in locks.hpp
-
 template <class> class lock_auth;
 
 /*! \class lock_auth <rw_lock>
@@ -65,6 +101,8 @@ template <class> class lock_auth;
  * be locked currently has no other locks; 2) if the call isn't blocking and
  * it's for a write lock.
  */
+
+class rw_lock;
 
 template <>
 class lock_auth <rw_lock> : public lock_auth_base {
@@ -124,6 +162,8 @@ private:
  * obtain a write lock on any container.
  */
 
+class r_lock;
+
 template <>
 class lock_auth <r_lock> : public lock_auth_base {
 public:
@@ -168,6 +208,8 @@ private:
  * locks on containers that use 'rw_lock' or 'r_lock'.
  */
 
+class w_lock;
+
 template <>
 class lock_auth <w_lock> : public lock_auth_base {
 public:
@@ -208,6 +250,8 @@ private:
  *
  * This auth. type doesn't allow the caller to obtain any locks.
  */
+
+struct broken_lock;
 
 template <>
 class lock_auth <broken_lock> : public lock_auth_base {
