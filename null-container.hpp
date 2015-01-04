@@ -33,6 +33,8 @@
 #ifndef null_container_hpp
 #define null_container_hpp
 
+#include <assert.h>
+
 #include "locks.hpp"
 #include "object-proxy.hpp"
 
@@ -47,12 +49,14 @@ public:
   typedef lock_auth_base::auth_type auth_type;
 
   virtual write_proxy get_write_auth(auth_type &authorization, bool block = true) {
+    assert(authorization);
     return this->get_write_auth(authorization.get(), block);
   }
 
-  virtual write_proxy get_write_auth(lock_auth_base *authorization, bool block = true) = 0;
-
   virtual inline ~null_container_base() {}
+
+protected:
+  virtual write_proxy get_write_auth(lock_auth_base *authorization, bool block = true) = 0;
 
 private:
   template <class> friend class locking_container_base;
@@ -73,6 +77,7 @@ public:
   typedef null_container_base base;
   using base::write_proxy;
   using base::auth_type;
+  using base::get_write_auth;
 
   null_container() {}
 
@@ -80,16 +85,10 @@ private:
   null_container(const null_container&);
   null_container &operator = (const null_container&);
 
-public:
-  inline write_proxy get_write_auth(auth_type &authorization, bool block = true) {
-    return this->get_write_auth(authorization.get(), block);
-  }
-
   inline write_proxy get_write_auth(lock_auth_base *authorization, bool block = true) {
     return write_proxy(true, &locks, authorization, block, NULL);
   }
 
-private:
   inline lock_base *get_lock_object() {
     return &locks;
   }
