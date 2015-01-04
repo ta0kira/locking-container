@@ -59,10 +59,12 @@ template <class> class lock_auth;
 template <>
 class lock_auth <rw_lock> : public lock_auth_base {
 public:
+  using lock_auth_base::count_type;
+
   lock_auth() : reading(0), writing(0) {}
 
-  int reading_count() const { return reading; }
-  int writing_count() const { return writing; }
+  count_type reading_count() const { return reading; }
+  count_type writing_count() const { return writing; }
 
   ~lock_auth() {
     //NOTE: this can't be in '~lock_auth_base'!
@@ -100,16 +102,18 @@ private:
     }
   }
 
-  int  reading, writing;
+  count_type reading, writing;
 };
 
 template <>
 class lock_auth <r_lock> : public lock_auth_base {
 public:
+  using lock_auth_base::count_type;
+
   lock_auth() : reading(0) {}
 
-  int  reading_count() const { return reading; }
-  bool always_read()   const { return true; }
+  count_type reading_count() const { return reading; }
+  bool       always_read()   const { return true; }
 
   ~lock_auth() {
     //NOTE: this can't be in '~lock_auth_base'!
@@ -133,16 +137,18 @@ private:
     --reading;
   }
 
-  int  reading;
+  count_type reading;
 };
 
 template <>
 class lock_auth <w_lock> : public lock_auth_base {
 public:
+  using lock_auth_base::count_type;
+
   lock_auth() : writing(0) {}
 
-  int  writing_count() const { return writing; }
-  bool always_write()  const { return true; }
+  count_type writing_count() const { return writing; }
+  bool       always_write()  const { return true; }
 
   ~lock_auth() {
     //NOTE: this can't be in '~lock_auth_base'!
@@ -167,11 +173,14 @@ private:
     --writing;
   }
 
-  int writing;
+  count_type writing;
 };
 
 template <>
 class lock_auth <broken_lock> : public lock_auth_base {
+public:
+  using lock_auth_base::count_type;
+
 private:
   bool register_auth(bool /*Read*/, bool /*LockOut*/, bool /*InUse*/, bool /*TestAuth*/) { return false; }
   void release_auth(bool /*Read*/) { assert(false); }

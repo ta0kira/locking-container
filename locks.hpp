@@ -49,12 +49,13 @@ class lock_base;
 
 class lock_auth_base {
 public:
+  typedef long count_type;
   typedef std::shared_ptr <lock_auth_base> auth_type;
 
-  virtual int  reading_count() const { return 0; }
-  virtual int  writing_count() const { return 0; }
-  virtual bool always_read()   const { return false; }
-  virtual bool always_write()  const { return false; }
+  virtual count_type reading_count() const { return 0; }
+  virtual count_type writing_count() const { return 0; }
+  virtual bool       always_read()   const { return false; }
+  virtual bool       always_write()  const { return false; }
 
   virtual inline ~lock_auth_base() {}
 
@@ -72,10 +73,13 @@ private:
 
 class lock_base {
 public:
+  typedef lock_auth_base::count_type count_type;
+
   /*! Return < 0 must mean failure. Should return the current number of read locks on success.*/
-  virtual int lock(lock_auth_base *auth, bool read, bool block = true, bool test = false) = 0;
+  virtual count_type lock(lock_auth_base *auth, bool read, bool block = true, bool test = false) = 0;
+
   /*! Return < 0 must mean failure. Should return the current number of read locks on success.*/
-  virtual int unlock(lock_auth_base *auth, bool read, bool test = false) = 0;
+  virtual count_type unlock(lock_auth_base *auth, bool read, bool test = false) = 0;
 
 protected:
   static inline bool register_auth(lock_auth_base *auth, bool Read, bool LockOut,
@@ -95,6 +99,8 @@ protected:
 
 class rw_lock : public lock_base {
 public:
+  using lock_base::count_type;
+
   rw_lock() : readers(0), readers_waiting(0), writer(false), writer_waiting(false), the_writer(NULL) {
     pthread_mutex_init(&master_lock, NULL);
     pthread_cond_init(&read_wait, NULL);
@@ -106,7 +112,7 @@ private:
   rw_lock &operator = (const rw_lock&);
 
 public:
-  int lock(lock_auth_base *auth, bool read, bool block = true, bool test = false) {
+  long lock(lock_auth_base *auth, bool read, bool block = true, bool test = false) {
     if (pthread_mutex_lock(&master_lock) != 0) return -1;
     bool writer_reads = auth && the_writer == auth && read;
     //make sure this is an authorized lock type for the caller
@@ -137,7 +143,7 @@ public:
         }
       }
       --readers_waiting;
-      int new_readers = ++readers;
+      count_type new_readers = ++readers;
       //if for some strange reason there's an overflow...
       assert((writer_reads || (!writer && !writer_waiting)) && readers > 0);
       pthread_mutex_unlock(&master_lock);
@@ -174,12 +180,12 @@ public:
     }
   }
 
-  int unlock(lock_auth_base *auth, bool read, bool test = false) {
+  count_type unlock(lock_auth_base *auth, bool read, bool test = false) {
     if (pthread_mutex_lock(&master_lock) != 0) return -1;
     if (!test) release_auth(auth, read);
     if (read) {
       assert(((auth && the_writer == auth) || !writer) && readers > 0);
-      int new_readers = --readers;
+      count_type new_readers = --readers;
       if (!new_readers && writer_waiting) {
         pthread_cond_broadcast(&write_wait);
       }
@@ -209,7 +215,7 @@ public:
   }
 
 private:
-  int              readers, readers_waiting;
+  count_type       readers, readers_waiting;
   bool             writer, writer_waiting;
   const void      *the_writer;
   pthread_mutex_t  master_lock;
@@ -223,6 +229,8 @@ private:
 
 class r_lock : public lock_base {
 public:
+  using lock_base::count_type;
+
   r_lock() : readers(0) {}
 
 private:
@@ -230,21 +238,21 @@ private:
   r_lock &operator = (const r_lock&);
 
 public:
-  int lock(lock_auth_base *auth, bool read, bool /*block*/ = true, bool test = false) {
+  count_type lock(lock_auth_base *auth, bool read, bool /*block*/ = true, bool test = false) {
     if (!read) return -1;
     if (!register_auth(auth, read, false, false, test)) return -1;
     //NOTE: this should be atomic
-    int new_readers = ++readers;
+    count_type new_readers = ++readers;
     //(check the copy!)
     assert(new_readers > 0);
     return new_readers;
   }
 
-  int unlock(lock_auth_base *auth, bool read, bool test = false) {
+  count_type unlock(lock_auth_base *auth, bool read, bool test = false) {
     if (!read) return -1;
     if (!test) release_auth(auth, read);
     //NOTE: this should be atomic
-    int new_readers = --readers;
+    count_type new_readers = --readers;
     //(check the copy!)
     assert(new_readers >= 0);
     return new_readers;
@@ -255,7 +263,7 @@ public:
   }
 
 private:
-  std::atomic <int> readers;
+  std::atomic <count_type> readers;
 };
 
 
@@ -265,6 +273,8 @@ private:
 
 class w_lock : public lock_base {
 public:
+  using lock_base::count_type;
+
   w_lock() : locked(false) {
     pthread_mutex_init(&write_lock, NULL);
   }
@@ -274,7 +284,7 @@ private:
   w_lock &operator = (const w_lock&);
 
 public:
-  int lock(lock_auth_base *auth, bool /*read*/, bool block = true, bool test = false) {
+  count_type lock(lock_auth_base *auth, bool /*read*/, bool block = true, bool test = false) {
     //NOTE: 'false' is passed instead of 'read' because this can lock out other readers
     if (!register_auth(auth, false, locked, locked, test)) return -1;
     if ((block? pthread_mutex_lock : pthread_mutex_trylock)(&write_lock) != 0) {
@@ -286,7 +296,7 @@ public:
     return 0;
   }
 
-  int unlock(lock_auth_base *auth, bool /*read*/, bool test = false) {
+  count_type unlock(lock_auth_base *auth, bool /*read*/, bool test = false) {
     if (!test) release_auth(auth, false);
     assert(locked);
     locked = false;
@@ -309,9 +319,11 @@ private:
  */
 
 struct broken_lock : public lock_base {
-  int lock(lock_auth_base* /*auth*/, bool /*read*/, bool /*block*/ = true,
+  using lock_base::count_type;
+
+  count_type lock(lock_auth_base* /*auth*/, bool /*read*/, bool /*block*/ = true,
     bool /*test*/ = false) { return -1; }
-  int unlock(lock_auth_base* /*auth*/, bool /*read*/, bool /*test*/ = false) { return -1; }
+  count_type unlock(lock_auth_base* /*auth*/, bool /*read*/, bool /*test*/ = false) { return -1; }
 };
 
 #endif //locks_hpp
