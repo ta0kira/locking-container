@@ -77,7 +77,7 @@ int main()
 //a print function that ensures we have exclusive access to the output
 static void send_output(const char *format, ...) {
   //(there is no reasonable reason to allow multiple locks at once.)
-  typedef locking_container <FILE*, w_lock> protected_out;
+  typedef locking_container <FILE*, dumb_lock> protected_out;
   //(this is local so that it can't be involved in a deadlock)
   static protected_out stdout2(stdout);
 
