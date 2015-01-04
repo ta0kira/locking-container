@@ -75,12 +75,12 @@ private:
   lock_auth(const lock_auth&);
   lock_auth &operator = (const lock_auth&);
 
-  bool register_auth(bool Read, bool LockOut, bool InUse, bool TestAuth) {
-    if (writing && InUse)                return false;
-    if (reading && !Read && InUse)       return false;
-    if ((reading || writing) && LockOut) return false;
-    if (TestAuth) return true;
-    if (Read) {
+  bool register_auth(bool read, bool lock_out, bool in_use, bool test_auth) {
+    if (writing && in_use)                return false;
+    if (reading && !read && in_use)       return false;
+    if ((reading || writing) && lock_out) return false;
+    if (test_auth) return true;
+    if (read) {
       ++reading;
       assert(reading > 0);
     } else {
@@ -90,8 +90,8 @@ private:
     return true;
   }
 
-  void release_auth(bool Read) {
-    if (Read) {
+  void release_auth(bool read) {
+    if (read) {
       //NOTE: don't check 'writing' because there are a few exceptions!
       assert(reading > 0);
       --reading;
@@ -122,17 +122,17 @@ public:
   }
 
 private:
-  bool register_auth(bool Read, bool LockOut, bool /*InUse*/, bool TestAuth) {
-    if (!Read)              return false;
-    if (reading && LockOut) return false;
-    if (TestAuth) return true;
+  bool register_auth(bool read, bool lock_out, bool /*in_use*/, bool test_auth) {
+    if (!read)              return false;
+    if (reading && lock_out) return false;
+    if (test_auth) return true;
     ++reading;
     assert(reading > 0);
     return true;
   }
 
-  void release_auth(bool Read) {
-    assert(Read);
+  void release_auth(bool read) {
+    assert(read);
     assert(reading > 0);
     --reading;
   }
@@ -160,15 +160,15 @@ private:
   lock_auth(const lock_auth&);
   lock_auth &operator = (const lock_auth&);
 
-  bool register_auth(bool /*Read*/, bool /*LockOut*/, bool InUse, bool TestAuth) {
-    if (writing && InUse) return false;
-    if (TestAuth) return true;
+  bool register_auth(bool /*read*/, bool /*lock_out*/, bool in_use, bool test_auth) {
+    if (writing && in_use) return false;
+    if (test_auth) return true;
     ++writing;
     assert(writing > 0);
     return true;
   }
 
-  void release_auth(bool /*Read*/) {
+  void release_auth(bool /*read*/) {
     assert(writing > 0);
     --writing;
   }
@@ -182,8 +182,8 @@ public:
   using lock_auth_base::count_type;
 
 private:
-  bool register_auth(bool /*Read*/, bool /*LockOut*/, bool /*InUse*/, bool /*TestAuth*/) { return false; }
-  void release_auth(bool /*Read*/) { assert(false); }
+  bool register_auth(bool /*read*/, bool /*lock_out*/, bool /*in_use*/, bool /*test_auth*/) { return false; }
+  void release_auth(bool /*read*/) { assert(false); }
 };
 
 #endif //authorization_hpp

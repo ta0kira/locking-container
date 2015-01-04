@@ -62,8 +62,8 @@ public:
 private:
   friend class lock_base;
 
-  virtual bool register_auth(bool Read, bool LockOut, bool InUse, bool TestAuth) = 0;
-  virtual void release_auth(bool Read) = 0;
+  virtual bool register_auth(bool read, bool lock_out, bool in_use, bool test_auth) = 0;
+  virtual void release_auth(bool read) = 0;
 };
 
 
@@ -82,13 +82,13 @@ public:
   virtual count_type unlock(lock_auth_base *auth, bool read, bool test = false) = 0;
 
 protected:
-  static inline bool register_auth(lock_auth_base *auth, bool Read, bool LockOut,
-    bool InUse, bool TestAuth) {
-    return auth? auth->register_auth(Read, LockOut, InUse, TestAuth) : true;
+  static inline bool register_auth(lock_auth_base *auth, bool read, bool lock_out,
+    bool in_use, bool test_auth) {
+    return auth? auth->register_auth(read, lock_out, in_use, test_auth) : true;
   }
 
-  static inline void release_auth(lock_auth_base *auth, bool Read) {
-    if (auth) auth->release_auth(Read);
+  static inline void release_auth(lock_auth_base *auth, bool read) {
+    if (auth) auth->release_auth(read);
   }
 };
 

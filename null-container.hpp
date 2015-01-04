@@ -46,16 +46,17 @@ public:
   typedef object_proxy <void>       proxy;
   typedef lock_auth_base::auth_type auth_type;
 
-  virtual proxy get_auth(auth_type &Authorization, bool Block = true) {
-    return this->get_auth(Authorization.get(), Block);
+  virtual proxy get_auth(auth_type &authorization, bool block = true) {
+    return this->get_auth(authorization.get(), block);
   }
 
-  virtual proxy get_auth(lock_auth_base *Authorization, bool Block = true) = 0;
+  virtual proxy get_auth(lock_auth_base *authorization, bool block = true) = 0;
 
   virtual inline ~null_container_base() {}
 
 private:
   template <class> friend class locking_container_base;
+
   virtual lock_base *get_lock_object() = 0;
 };
 
@@ -77,12 +78,12 @@ public:
     this->get_auth(NULL);
   }
 
-  inline proxy get_auth(auth_type &Authorization, bool Block = true) {
-    return this->get_auth(Authorization.get(), Block);
+  inline proxy get_auth(auth_type &authorization, bool block = true) {
+    return this->get_auth(authorization.get(), block);
   }
 
-  inline proxy get_auth(lock_auth_base *Authorization, bool Block = true) {
-    return proxy(true, &locks, Authorization, Block, NULL);
+  inline proxy get_auth(lock_auth_base *authorization, bool block = true) {
+    return proxy(true, &locks, authorization, block, NULL);
   }
 
 private:
