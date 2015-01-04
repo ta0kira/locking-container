@@ -1,6 +1,6 @@
 /* This software is released under the BSD License.
  |
- | Copyright (c) 2015, Kevin P. Barry [ta0kira@gmail.com]
+ | Copyright (c) 2014-2015, Kevin P. Barry [ta0kira@gmail.com]
  | All rights reserved.
  |
  | Redistribution  and  use  in  source  and   binary  forms,  with  or  without
@@ -30,11 +30,7 @@
  | POSSIBILITY OF SUCH DAMAGE.
  +~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-/* Container with automatic unlocking, concurrent reads, and deadlock prevention
- * (c) 2014-2015, Kevin P. Barry [ta0kira@gmail.com]
- *
- *
- * This file provides a template class that protects access to an object with
+/* This file provides a template class that protects access to an object with
  * locks of various types. Conventional mutex-protection methods are susceptible
  * to bugs caused by forgetting (or neglecting) to lock/unlock the mutex. This
  * class eliminates the need to remember because the only access to the
