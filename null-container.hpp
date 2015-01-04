@@ -46,11 +46,11 @@ public:
   typedef object_proxy <void>       write_proxy;
   typedef lock_auth_base::auth_type auth_type;
 
-  virtual write_proxy get_auth(auth_type &authorization, bool block = true) {
-    return this->get_auth(authorization.get(), block);
+  virtual write_proxy get_write_auth(auth_type &authorization, bool block = true) {
+    return this->get_write_auth(authorization.get(), block);
   }
 
-  virtual write_proxy get_auth(lock_auth_base *authorization, bool block = true) = 0;
+  virtual write_proxy get_write_auth(lock_auth_base *authorization, bool block = true) = 0;
 
   virtual inline ~null_container_base() {}
 
@@ -81,11 +81,11 @@ private:
   null_container &operator = (const null_container&);
 
 public:
-  inline write_proxy get_auth(auth_type &authorization, bool block = true) {
-    return this->get_auth(authorization.get(), block);
+  inline write_proxy get_write_auth(auth_type &authorization, bool block = true) {
+    return this->get_write_auth(authorization.get(), block);
   }
 
-  inline write_proxy get_auth(lock_auth_base *authorization, bool block = true) {
+  inline write_proxy get_write_auth(lock_auth_base *authorization, bool block = true) {
     return write_proxy(true, &locks, authorization, block, NULL);
   }
 
