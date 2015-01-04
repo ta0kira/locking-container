@@ -202,6 +202,7 @@ public:
   }
 
   ~rw_lock() {
+    assert(!readers && !readers_waiting && !writer && !writer_waiting);
     pthread_mutex_destroy(&master_lock);
     pthread_cond_destroy(&read_wait);
     pthread_cond_destroy(&write_wait);
@@ -222,7 +223,7 @@ private:
 
 class r_lock : public lock_base {
 public:
-  r_lock() : counter(0) {}
+  r_lock() : readers(0) {}
 
 private:
   r_lock(const r_lock&);
@@ -233,24 +234,28 @@ public:
     if (!read) return -1;
     if (!register_auth(auth, read, false, false, test)) return -1;
     //NOTE: this should be atomic
-    int new_counter = ++counter;
+    int new_readers = ++readers;
     //(check the copy!)
-    assert(new_counter > 0);
-    return new_counter;
+    assert(new_readers > 0);
+    return new_readers;
   }
 
   int unlock(lock_auth_base *auth, bool read, bool test = false) {
     if (!read) return -1;
     if (!test) release_auth(auth, read);
     //NOTE: this should be atomic
-    int new_counter = --counter;
+    int new_readers = --readers;
     //(check the copy!)
-    assert(new_counter >= 0);
-    return new_counter;
+    assert(new_readers >= 0);
+    return new_readers;
+  }
+
+  ~r_lock() {
+    assert(!readers);
   }
 
 private:
-  std::atomic <int> counter;
+  std::atomic <int> readers;
 };
 
 
@@ -289,11 +294,12 @@ public:
   }
 
   ~w_lock() {
+    assert(!locked);
     pthread_mutex_destroy(&write_lock);
   }
 
 private:
-  bool locked;
+  bool            locked;
   pthread_mutex_t write_lock;
 };
 
