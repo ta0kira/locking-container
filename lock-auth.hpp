@@ -51,8 +51,6 @@ public:
 
   virtual count_type reading_count() const { return 0; }
   virtual count_type writing_count() const { return 0; }
-  virtual bool       always_read()   const { return false; }
-  virtual bool       always_write()  const { return false; }
 
   /*! Attempt to predict if a read authorization would be granted.*/
   inline bool guess_read_allowed(bool lock_out = true, bool in_use = true) const {
@@ -185,7 +183,6 @@ public:
   lock_auth() : reading(0) {}
 
   count_type reading_count() const { return reading; }
-  bool       always_read()   const { return true; }
 
   ~lock_auth() {
     //NOTE: this can't be in '~lock_auth_base'!
@@ -237,7 +234,6 @@ public:
   lock_auth() : writing(0) {}
 
   count_type writing_count() const { return writing; }
-  bool       always_write()  const { return true; }
 
   ~lock_auth() {
     //NOTE: this can't be in '~lock_auth_base'!
@@ -286,7 +282,6 @@ public:
   lock_auth() : writing(false) {}
 
   count_type writing_count() const { return writing? 1 : 0; }
-  bool       always_write()  const { return true; }
 
   ~lock_auth() {
     //NOTE: this can't be in '~lock_auth_base'!
