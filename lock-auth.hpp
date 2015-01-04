@@ -99,10 +99,12 @@ template <class> class lock_auth;
  *
  * This auth. type allows the caller to hold multiple read locks, or a single
  * write lock, but not both. Note that if another thread is waiting for a write
- * lock on the container and the caller already has a read lock then the lock
- * will be rejected. Two exceptions to these rules are: 1) if the container to
- * be locked currently has no other locks; 2) if the call isn't blocking and
- * it's for a write lock.
+ * lock on a w_lock or rw_lock container and the caller already has a read lock
+ * then the lock will be rejected. Three exceptions to these rules are: 1) if
+ * the container to be locked currently has no other locks; 2) if the call isn't
+ * blocking and it's for a write lock; 3) if the container uses a rw_lock, the
+ * caller has a write lock on the container, and the caller is requesting a read
+ * lock. (The 3rd case is what allows multi-lock to work.)
  */
 
 class rw_lock;
@@ -166,7 +168,9 @@ private:
  * locks. Note that if another thread is waiting for a write lock on the
  * container and the caller already has a read lock then the lock will be
  * rejected. Use this auth. type if you want to ensure that a thread doesn't
- * obtain a write lock on any container.
+ * obtain a write lock on any container. Using this auth. type with containers
+ * that use any combination of r_lock and rw_lock should result in the same
+ * behavior as using it with only r_lock containers.
  */
 
 class r_lock;
@@ -215,8 +219,10 @@ private:
  * This auth. type allows the caller to hold no more than one lock at a time,
  * regardless of lock type. An exception to this behavior is if the container to
  * be locked currently has no other locks. Use this auth. type if you are only
- * using containers that use 'w_lock', or if you want to disallow multiple read
- * locks on containers that use 'rw_lock' or 'r_lock'.
+ * using containers that use w_lock, or if you want to disallow multiple read
+ * locks on containers that use rw_lock or r_lock. Using this auth. type with
+ * containers that use any combination of w_lock and rw_lock should result in
+ * the same behavior as using it with only w_lock containers.
  */
 
 class w_lock;
