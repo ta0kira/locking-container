@@ -37,8 +37,9 @@
 
 
 /*! \class lock_auth_base
-    \brief Base class for lock authorization classes.
-    @see lock_auth
+ *  \brief Base class for lock authorization classes.
+ *
+ * @see lock_auth
  */
 
 class lock_base;
@@ -80,17 +81,18 @@ private:
 
 
 /*! \class lock_auth
-    \brief Lock authorization object.
-    @see locking_container::auth_type
-    @see locking_container::get_new_auth
-    @see locking_container::get_auth
-    @see locking_container::get_auth_const
-
-    This class is used by \ref locking_container to prevent deadlocks. To
-    prevent deadlocks, create one \ref lock_auth instance per thread, and pass
-    it to the \ref locking_container when getting a proxy object. This will
-    prevent the thread from obtaining an new incompatible lock type when it
-    already holds a lock.
+ *  \brief Lock authorization object.
+ *
+ * @see locking_container::auth_type
+ * @see locking_container::get_new_auth
+ * @see locking_container::get_auth
+ * @see locking_container::get_auth_const
+ *
+ * This class is used by \ref locking_container to prevent deadlocks. To prevent
+ * deadlocks, create one \ref lock_auth instance per thread, and pass it to the
+ * \ref locking_container when getting a proxy object. This will prevent the
+ * thread from obtaining an new incompatible lock type when it already holds a
+ * lock.
  */
 
 template <class> class lock_auth;

@@ -123,13 +123,13 @@ private:
 
 
 /*! \class object_proxy
-    \brief Proxy object for \ref locking_container access.
-
-    Instances of this class are returned by \ref locking_container instances as
-    proxy objects that access the contained object. \ref locking_container is
-    locked upon return of this object and references to the returned object are
-    counted as it's copied. Upon destruction of the last reference the container
-    is unlocked.
+ *  \brief Proxy object for \ref locking_container access.
+ *
+ * Instances of this class are returned by \ref locking_container instances as
+ * proxy objects that access the contained object. \ref locking_container is
+ * locked upon return of this object and references to the returned object are
+ * counted as it's copied. Upon destruction of the last reference the container
+ * is unlocked.
  */
 
 template <class Type>
@@ -145,8 +145,8 @@ public:
   object_proxy() : object_proxy_base <Type> () {}
 
   /** @name Checking Referred-to Object
-  *
-  */
+   *
+   */
   //@{
 
   /*! \brief Clear the reference and unlock the container.
@@ -198,8 +198,8 @@ public:
   //@}
 
   /** @name Trivial Iterator Functions
-  *
-  */
+   *
+   */
   //@{
 
   inline operator       Type*()          { return  this->pointer(); }
@@ -226,8 +226,8 @@ public:
   object_proxy() : object_proxy_base <const Type> () {}
 
   /** @name Checking Referred-to Object
-  *
-  */
+   *
+   */
   //@{
 
   /*! \brief Clear the reference and unlock the container.
@@ -279,8 +279,8 @@ public:
   //@}
 
   /** @name Trivial Iterator Functions
-  *
-  */
+   *
+   */
   //@{
 
   inline operator const Type*() const    { return  this->pointer(); }

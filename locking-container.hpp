@@ -89,7 +89,12 @@
 
 
 /*! \class locking_container_base
-    \brief Base class for \ref locking_container.
+ *  \brief Base class for \ref locking_container.
+ *
+ * \attention The object being protected should have no side-effects when a
+ * const function is called (e.g., by calling non-reentrant C functions). This
+ * is because some containers grant multiple read locks at one time, which means
+ * that side effects could cause problems in multithreaded code.
  */
 
 template <class Type>
@@ -101,20 +106,16 @@ public:
   typedef lock_auth_base::auth_type auth_type;
 
   /** @name Accessor Functions
-  *
-  */
+   *
+   */
   //@{
 
   /*! \brief Retrieve a writable proxy to the contained object.
    *
    * @see object_proxy
-   * \attention Always check that the returned object contains a valid
-   * pointer with object_proxy::operator!. The reference will always be
-   * invalid if a lock hasn't been obtained.
-   * \attention The returned object should only be passed by value, and it
-   * should only be passed within the same thread that
-   * \ref locking_container::get_write was called from. This is because the
-   * proxy object uses reference counting that isn't reentrant.
+   * \attention Always check that the returned object contains a valid pointer
+   * with object_proxy::operator!. The pointer will always be NULL if a lock
+   * hasn't been obtained.
    * \param block Should the call block for a lock?
    *
    * \return proxy object
@@ -267,8 +268,8 @@ private:
 
 public:
   /** @name Accessor Functions
-  *
-  */
+   *
+   */
   //@{
 
   /*! @see locking_container_base::get_write_auth.*/
@@ -284,8 +285,8 @@ public:
   //@}
 
   /** @name New Authorization Objects
-  *
-  */
+   *
+   */
   //@{
 
   /*! Get a new authorization object.*/

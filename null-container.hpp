@@ -38,7 +38,7 @@
 
 
 /*! \class null_container_base
-    \brief Base class for \ref null_container.
+ *  \brief Base class for \ref null_container.
  */
 
 class null_container_base {
@@ -62,7 +62,7 @@ private:
 
 
 /*! \class null_container
-    \brief Empty container, used as a global multi-locking mechanism.
+ *  \brief Empty container, used as a global multi-locking mechanism.
  */
 
 class null_container : public null_container_base {

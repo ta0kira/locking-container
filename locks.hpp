@@ -43,7 +43,7 @@
 
 
 /*! \class lock_base
-    \brief Base class for lock classes.
+ *  \brief Base class for lock classes.
  */
 
 class lock_base {
@@ -71,7 +71,7 @@ protected:
 
 
 /*! \class rw_lock
-    \brief Lock object that allows multiple readers at once.
+ *  \brief Lock object that allows multiple readers at once.
  *
  * This lock allows multiple readers at a time. This is the default lock used.
  * A write lock can only be obtained if no other readers or writers have a lock.
@@ -210,7 +210,7 @@ private:
 
 
 /*! \class r_lock
-    \brief Lock object that allows multiple readers but no writers.
+ *  \brief Lock object that allows multiple readers but no writers.
  *
  * This lock allows multiple readers, but it never allows writers. This might be
  * useful if you have a container that will never be written to but you
@@ -258,7 +258,7 @@ private:
 
 
 /*! \class w_lock
-    \brief Lock object that allows only one thread access at a time.
+ *  \brief Lock object that allows only one thread access at a time.
  *
  * This lock doesn't make a distinction between readers and writers; only one
  * thread can hold a lock at any given time. This should operate faster if you
@@ -310,7 +310,7 @@ private:
 
 
 /*! \class broken_lock
-    \brief Lock object that is permanently broken.
+ *  \brief Lock object that is permanently broken.
  *
  * This is mostly a joke; however, you can use it to test pathological cases.
  * This lock will always fail to lock and unlock.
