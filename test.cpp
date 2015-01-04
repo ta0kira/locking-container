@@ -162,6 +162,8 @@ static void *thread(void *nv) {
 
 //a more complicated thread that requires deadlock prevention, but multiple write locks at once
 static void *thread_multi(void *nv) {
+  //NOTE: blocking system calls are still cancelation points, so threads could
+  //exit while waiting for a lock!
   if (pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL) != 0) return NULL;
 
   //NOTE: multi-locking will work with either 'lock_auth <w_lock>' or
