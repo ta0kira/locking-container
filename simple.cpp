@@ -89,12 +89,17 @@ int main() {
   bool success1 = try_copy_container(data0, data1, auth);
   assert(success1);
 
-  //use 'try_copy_container' to copy containers with multi-locking
+  //use 'try_copy_container' to copy containers, with multi-locking
+  //NOTE: normally every 'get_write_auth' and 'get_read_auth' above should be
+  //replaced with 'get_write_multi' and 'get_read_multi' so that 'multi_lock'
+  //keeps track of all of the locks held on 'data0' and 'data1'. this is so that
+  //'multi_lock' makes this call block until no other threads are accessing
+  //'data0' or 'data1'. (see test.cpp more a more elaborate example.)
   null_container multi_lock;
   bool success2 = try_copy_container(data0, data1, multi_lock, auth);
   assert(success2);
 
-  //optionally, if this thread already holds a write lock on 'multi_lock'...
+  //or, if this thread already holds a write lock on 'multi_lock'...
   null_container_base::write_proxy multi = multi_lock.get_write_auth(auth);
   bool success3 = try_copy_container(data0, data1, multi_lock, auth, true, false);
   assert(success3);
