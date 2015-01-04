@@ -96,8 +96,8 @@ template <class Type>
 class locking_container_base {
 public:
   typedef Type                      type;
-  typedef object_proxy <type>       proxy;
-  typedef object_proxy <const type> const_proxy;
+  typedef object_proxy <type>       write_proxy;
+  typedef object_proxy <const type> read_proxy;
   typedef lock_auth_base::auth_type auth_type;
 
   /** @name Accessor Functions
@@ -119,7 +119,7 @@ public:
    *
    * \return proxy object
    */
-  inline proxy get(bool block = true) {
+  inline write_proxy get(bool block = true) {
     return this->get_auth(NULL, block);
   }
 
@@ -130,7 +130,7 @@ public:
    *
    * \return proxy object
    */
-  inline const_proxy get_const(bool block = true) {
+  inline read_proxy get_const(bool block = true) {
     return this->get_auth_const(NULL, block);
   }
 
@@ -143,7 +143,7 @@ public:
    *
    * \return proxy object
    */
-  inline proxy get_auth(auth_type &authorization, bool block = true) {
+  inline write_proxy get_auth(auth_type &authorization, bool block = true) {
     return this->get_auth(authorization.get(), block);
   }
 
@@ -156,12 +156,12 @@ public:
    *
    * \return proxy object
    */
-  inline const_proxy get_auth_const(auth_type &authorization, bool block = true) {
+  inline read_proxy get_auth_const(auth_type &authorization, bool block = true) {
     return this->get_auth_const(authorization.get(), block);
   }
 
-  virtual proxy       get_auth(lock_auth_base *authorization, bool block = true)       = 0;
-  virtual const_proxy get_auth_const(lock_auth_base *authorization, bool block = true) = 0;
+  virtual write_proxy get_auth(lock_auth_base *authorization, bool block = true)       = 0;
+  virtual read_proxy  get_auth_const(lock_auth_base *authorization, bool block = true) = 0;
 
   /*! \brief Retrieve a writable proxy to the contained object using deadlock
    *  prevention and multiple locking functionality.
@@ -173,7 +173,7 @@ public:
    *
    * \return proxy object
    */
-  inline proxy get_multi(null_container_base &multi_lock, lock_auth_base *authorization, bool block = true) {
+  inline write_proxy get_multi(null_container_base &multi_lock, lock_auth_base *authorization, bool block = true) {
     return this->get_multi(multi_lock.get_lock_object(), authorization, block);
   }
 
@@ -187,19 +187,19 @@ public:
    *
    * \return proxy object
    */
-  inline const_proxy get_multi_const(null_container_base &multi_lock,
+  inline read_proxy get_multi_const(null_container_base &multi_lock,
     lock_auth_base *authorization, bool block = true) {
     return this->get_multi_const(multi_lock.get_lock_object(), authorization, block);
   }
 
   /*! @see get_multi.*/
-  inline proxy get_multi(null_container_base &multi_lock, auth_type &authorization,
+  inline write_proxy get_multi(null_container_base &multi_lock, auth_type &authorization,
     bool block = true) {
     return this->get_multi(multi_lock, authorization.get(), block);
   }
 
   /*! @see get_multi_const.*/
-  inline const_proxy get_multi_const(null_container_base &multi_lock,
+  inline read_proxy get_multi_const(null_container_base &multi_lock,
     auth_type &authorization, bool block = true) {
     return this->get_multi_const(multi_lock, authorization.get(), block);
   }
@@ -213,14 +213,14 @@ public:
   virtual inline ~locking_container_base() {}
 
 protected:
-  virtual proxy get_multi(lock_base */*multi_lock*/, lock_auth_base */*authorization*/,
+  virtual write_proxy get_multi(lock_base */*multi_lock*/, lock_auth_base */*authorization*/,
     bool /*block*/) {
-    return proxy();
+    return write_proxy();
   }
 
-  virtual const_proxy get_multi_const(lock_base */*multi_lock*/, lock_auth_base */*authorization*/,
+  virtual read_proxy get_multi_const(lock_base */*multi_lock*/, lock_auth_base */*authorization*/,
     bool /*block*/) {
-    return const_proxy();
+    return read_proxy();
   }
 };
 
@@ -244,8 +244,8 @@ private:
 public:
   typedef locking_container_base <Type> base;
   using typename base::type;
-  using typename base::proxy;
-  using typename base::const_proxy;
+  using typename base::write_proxy;
+  using typename base::read_proxy;
   using typename base::auth_type;
   //NOTE: this is needed so that the 'lock_auth_base' variants are pulled in
   using base::get_auth;
@@ -270,12 +270,12 @@ public:
   //@{
 
   /*! @see locking_container_base::get_auth.*/
-  inline proxy get_auth(lock_auth_base *authorization, bool block = true) {
+  inline write_proxy get_auth(lock_auth_base *authorization, bool block = true) {
     return this->get_multi(NULL, authorization, block);
   }
 
   /*! @see locking_container_base::get_auth_const.*/
-  inline const_proxy get_auth_const(lock_auth_base *authorization, bool block = true) {
+  inline read_proxy get_auth_const(lock_auth_base *authorization, bool block = true) {
     return this->get_multi_const(NULL, authorization, block);
   }
 
@@ -299,14 +299,14 @@ public:
   //@}
 
 private:
-  inline proxy get_multi(lock_base *multi_lock, lock_auth_base *authorization, bool block = true) {
+  inline write_proxy get_multi(lock_base *multi_lock, lock_auth_base *authorization, bool block = true) {
     //NOTE: no read/write choice is given here!
-    return proxy(&contained, &locks, authorization, block, multi_lock);
+    return write_proxy(&contained, &locks, authorization, block, multi_lock);
   }
 
-  inline const_proxy get_multi_const(lock_base *multi_lock, lock_auth_base *authorization,
+  inline read_proxy get_multi_const(lock_base *multi_lock, lock_auth_base *authorization,
     bool block = true) {
-    return const_proxy(&contained, &locks, authorization, true, block, multi_lock);
+    return read_proxy(&contained, &locks, authorization, true, block, multi_lock);
   }
 
   type contained;
@@ -329,10 +329,10 @@ template <class Type1, class Type2>
 inline bool try_copy_container(locking_container_base <Type1> &left,
   locking_container_base <Type2> &right, lock_auth_base *authorization,
   bool block = true) {
-  typename locking_container_base <Type1> ::proxy write = left.get_auth(authorization, block);
+  typename locking_container_base <Type1> ::write_proxy write = left.get_auth(authorization, block);
   if (!write) return false;
 
-  typename locking_container_base <Type2> ::const_proxy read = right.get_auth_const(authorization, block);
+  typename locking_container_base <Type2> ::read_proxy read = right.get_auth_const(authorization, block);
   if (!read) return false;
 
   *write = *read;
@@ -378,13 +378,13 @@ template <class Type1, class Type2>
 inline bool try_copy_container(locking_container_base <Type1> &left,
   locking_container_base <Type2> &right, null_container_base &multi_lock,
   lock_auth_base *authorization, bool block = true, bool Trymulti_lock = true) {
-  null_container::proxy multi;
+  null_container::write_proxy multi;
   if (Trymulti_lock && !(multi = multi_lock.get_auth(authorization, block))) return false;
 
-  typename locking_container_base <Type1> ::proxy write = left.get_multi(multi_lock, authorization, block);
+  typename locking_container_base <Type1> ::write_proxy write = left.get_multi(multi_lock, authorization, block);
   if (!write) return false;
 
-  typename locking_container_base <Type2> ::const_proxy read = right.get_multi_const(multi_lock, authorization, block);
+  typename locking_container_base <Type2> ::read_proxy read = right.get_multi_const(multi_lock, authorization, block);
   if (!read) return false;
 
   if (Trymulti_lock) multi.clear();

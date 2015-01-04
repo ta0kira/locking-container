@@ -60,7 +60,7 @@ int main()
 
   //the threads exit when the value goes below 0
   {
-    protected_int::proxy write = my_data.get();
+    protected_int::write_proxy write = my_data.get();
     //(no clean way to exit if the container can't be locked)
     assert(write);
     *write = -1;
@@ -87,7 +87,7 @@ static void send_output(const char *format, ...) {
   //NOTE: authorization isn't important here because it's not possible for the
   //caller to lock another container while it holds a lock on 'stdout2';
   //deadlocks aren't an issue with respect to 'stdout2'
-  protected_out::proxy write = stdout2.get();
+  protected_out::write_proxy write = stdout2.get();
   if (!write) return;
   vfprintf(*write, format, ap);
 }
@@ -114,7 +114,7 @@ static void *thread(void *nv) {
 
     for (int i = 0; i < THREADS + n; i++) {
       send_output("?read %li\n", n);
-      protected_int::const_proxy read = my_data.get_auth_const(auth, READ_BLOCK);
+      protected_int::read_proxy read = my_data.get_auth_const(auth, READ_BLOCK);
       if (!read) {
         send_output("!read %li\n", n);
         return NULL;
@@ -138,7 +138,7 @@ static void *thread(void *nv) {
     //write once
 
     send_output("?write %li\n", n);
-    protected_int::proxy write = my_data.get_auth(auth, WRITE_BLOCK);
+    protected_int::write_proxy write = my_data.get_auth(auth, WRITE_BLOCK);
     if (!write) {
       send_output("!write %li\n", n);
       return NULL;
@@ -179,7 +179,7 @@ static void *thread_multi(void *nv) {
   while (true) {
     for (int i = 0; i < THREADS + n; i++) {
       send_output("?read0 %li\n", n);
-      protected_int::const_proxy read0 = my_data.get_multi_const(multi_lock, auth);
+      protected_int::read_proxy read0 = my_data.get_multi_const(multi_lock, auth);
       if (!read0) {
         send_output("!read0 %li\n", n);
         return NULL;
@@ -199,7 +199,7 @@ static void *thread_multi(void *nv) {
       //locks if the container to be locked has no other locks.)
 
       send_output("?read1 %li\n", n);
-      protected_int::const_proxy read1 = my_data2.get_multi_const(multi_lock, auth);
+      protected_int::read_proxy read1 = my_data2.get_multi_const(multi_lock, auth);
       if (!read1) {
         //(track the number of successes vs. failures for 'read1')
         ++failure;
@@ -223,7 +223,7 @@ static void *thread_multi(void *nv) {
       nanosleep(&wait, NULL);
 
       send_output("?write %li\n", n);
-      protected_int::proxy write = my_data.get_multi(multi_lock, auth);
+      protected_int::write_proxy write = my_data.get_multi(multi_lock, auth);
       if (!write) {
         send_output("!write %li\n", n);
         //(this thread has no locks at this point, so 'get_multi' above should
@@ -254,7 +254,7 @@ static void *thread_multi(void *nv) {
     //lock on another object, because a deadlock could otherwise happen!
 
     send_output("?multi0 %li\n", n);
-    null_container::proxy multi = multi_lock.get_auth(auth);
+    null_container::write_proxy multi = multi_lock.get_auth(auth);
     if (!multi) {
       send_output("!multi0 %li\n", n);
       return NULL;
@@ -270,7 +270,7 @@ static void *thread_multi(void *nv) {
     //used by any other threads (thanks to 'multi_lock').
 
     send_output("?multi1 %li\n", n);
-    protected_int::proxy write1 = my_data.get_multi(multi_lock, auth);
+    protected_int::write_proxy write1 = my_data.get_multi(multi_lock, auth);
     if (!write1) {
       send_output("!multi1 %li\n", n);
       return NULL;
@@ -283,7 +283,7 @@ static void *thread_multi(void *nv) {
     //'my_data2'. in fact, that's the only purpose of using 'multi_lock'!
 
     send_output("?multi2 %li\n", n);
-    protected_int::proxy write2 = my_data2.get_multi(multi_lock, auth);
+    protected_int::write_proxy write2 = my_data2.get_multi(multi_lock, auth);
     if (!write2) {
       send_output("!multi2 %li\n", n);
       return NULL;

@@ -39,8 +39,8 @@ int main() {
   lock_auth_base::auth_type auth2(new lock_auth <r_lock>);
 
   //proxy objects for accessing the protected data (use them like pointers)
-  base::proxy       write;
-  base::const_proxy read;
+  base::write_proxy write;
+  base::read_proxy  read;
 
   //get a proxy, without deadlock prevention
   write = data0.get();
@@ -68,17 +68,17 @@ int main() {
 
   {
     //'auth' still holds a read lock, but 'data0' isn't in use, so this should succeed
-    base::proxy write2 = data0.get_auth(auth);
+    base::write_proxy write2 = data0.get_auth(auth);
     assert(write2);
 
     //this is a potential deadlock, since 'auth' has a write lock and 'data1' is in use
-    base::const_proxy read2 = data1.get_auth_const(auth);
+    base::read_proxy read2 = data1.get_auth_const(auth);
     assert(!read2);
   } //<-- 'write2' goes out of scope, which unlocks 'data0'
 
   {
     //copy the proxy object
-    base::const_proxy read2 = read;
+    base::read_proxy read2 = read;
     assert(read2);
   } //<-- 'read2' goes out of scope, but 'data1' doesn't get unlocked since it's not a new lock
 
@@ -95,7 +95,7 @@ int main() {
   assert(success2);
 
   //optionally, if this thread already holds a write lock on 'multi_lock'...
-  null_container_base::proxy multi = multi_lock.get_auth(auth);
+  null_container_base::write_proxy multi = multi_lock.get_auth(auth);
   bool success3 = try_copy_container(data0, data1, multi_lock, auth, true, false);
   assert(success3);
 }

@@ -43,14 +43,14 @@
 
 class null_container_base {
 public:
-  typedef object_proxy <void>       proxy;
+  typedef object_proxy <void>       write_proxy;
   typedef lock_auth_base::auth_type auth_type;
 
-  virtual proxy get_auth(auth_type &authorization, bool block = true) {
+  virtual write_proxy get_auth(auth_type &authorization, bool block = true) {
     return this->get_auth(authorization.get(), block);
   }
 
-  virtual proxy get_auth(lock_auth_base *authorization, bool block = true) = 0;
+  virtual write_proxy get_auth(lock_auth_base *authorization, bool block = true) = 0;
 
   virtual inline ~null_container_base() {}
 
@@ -71,7 +71,7 @@ private:
 
 public:
   typedef null_container_base base;
-  using base::proxy;
+  using base::write_proxy;
   using base::auth_type;
 
   null_container() {}
@@ -81,12 +81,12 @@ private:
   null_container &operator = (const null_container&);
 
 public:
-  inline proxy get_auth(auth_type &authorization, bool block = true) {
+  inline write_proxy get_auth(auth_type &authorization, bool block = true) {
     return this->get_auth(authorization.get(), block);
   }
 
-  inline proxy get_auth(lock_auth_base *authorization, bool block = true) {
-    return proxy(true, &locks, authorization, block, NULL);
+  inline write_proxy get_auth(lock_auth_base *authorization, bool block = true) {
+    return write_proxy(true, &locks, authorization, block, NULL);
   }
 
 private:
