@@ -36,9 +36,7 @@ int main() {
   assert(auth);
 
   //alternatively, you can explicitly specify an authorization type
-  //NOTE: to use this, you'd pass '&auth2' to 'get_auth' or 'get_auth_const'
-  //(this might be useful if you want a thread to treat an object as read-only.)
-  lock_auth <r_lock> auth2;
+  lock_auth_base::auth_type auth2(new lock_auth <r_lock>);
 
   //proxy objects for accessing the protected data (use them like pointers)
   base::proxy       write;
