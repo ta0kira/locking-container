@@ -89,10 +89,6 @@ public:
     return proxy(true, &locks, authorization, block, NULL);
   }
 
-  ~null_container() {
-    this->get_auth(NULL);
-  }
-
 private:
   inline lock_base *get_lock_object() {
     return &locks;

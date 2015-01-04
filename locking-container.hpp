@@ -243,14 +243,6 @@ private:
   locking_container &operator = (const locking_container&);
 
 public:
-  /*! \brief Destructor.
-   *
-   * \attention This will block if the container is locked.
-   */
-  ~locking_container() {
-    this->get();
-  }
-
   /** @name Accessor Functions
   *
   */
@@ -266,7 +258,7 @@ public:
    * should only be passed within the same thread that
    * \ref locking_container::get was called from. This is because the proxy
    * object uses reference counting that isn't reentrant.
-   * \param authorization authorization object to prevent deadlocks.
+   * \param authorization Authorization object to prevent deadlocks.
    * \param block Should the call block for a lock?
    *
    * \return proxy object
