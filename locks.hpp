@@ -60,8 +60,8 @@ protected:
   static inline bool register_or_test_auth(lock_auth_base *auth, bool read, bool lock_out,
     bool in_use, bool test_auth) {
     if (!auth) return true;
-    return test_auth? auth->register_auth(read, lock_out, in_use) :
-                      auth->test_auth(read, lock_out, in_use);
+    return test_auth? auth->test_auth(read, lock_out, in_use) :
+                      auth->register_auth(read, lock_out, in_use);
   }
 
   static inline void release_auth(lock_auth_base *auth, bool read) {
