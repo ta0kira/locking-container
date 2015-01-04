@@ -336,6 +336,55 @@ private:
 };
 
 
+/*! \class dumb_lock
+ *  \brief Lock object that doesn't track readers and writers.
+ *
+ * This is the simplest lock class. It doesn't track the number of readers and
+ * writers; therefore, it always assumes that the container is in use and/or
+ * the lock will block (for the purposes of lock authorization). If lock
+ * authorization is used, this lock will almost certainly reject a lock if the
+ * caller holds any other locks. This means that a container using this type of
+ * lock cannot be a part of a multi-lock operation.
+ */
+
+class dumb_lock : public lock_base {
+public:
+  using lock_base::count_type;
+
+  dumb_lock() {
+    pthread_mutex_init(&master_lock, NULL);
+  }
+
+private:
+  dumb_lock(const dumb_lock&);
+  dumb_lock &operator = (const dumb_lock&);
+
+public:
+  count_type lock(lock_auth_base *auth, bool /*read*/, bool block = true, bool test = false) {
+    if (!register_or_test_auth(auth, false, true, true, test)) return -1;
+    if ((block? pthread_mutex_lock : pthread_mutex_trylock)(&master_lock) != 0) {
+      if (!test) release_auth(auth, false);
+      return -1;
+    }
+    return 0;
+  }
+
+  count_type unlock(lock_auth_base *auth, bool /*read*/, bool test = false) {
+    if (!test) release_auth(auth, false);
+    return (pthread_mutex_unlock(&master_lock) == 0)? 0 : -1;
+  }
+
+  ~dumb_lock() {
+    //NOTE: this is the only reasonable way to see if there is currently a lock
+    assert(pthread_mutex_trylock(&master_lock) == 0);
+    pthread_mutex_destroy(&master_lock);
+  }
+
+private:
+  pthread_mutex_t master_lock;
+};
+
+
 /*! \class broken_lock
  *  \brief Lock object that is permanently broken.
  *

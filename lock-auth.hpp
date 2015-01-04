@@ -268,6 +268,54 @@ private:
   count_type writing;
 };
 
+/*! \class lock_auth <dumb_lock>
+ *
+ * This auth. type only allows the caller to hold one lock at a time, with
+ * absolutely no exceptions. This is useful if you want to ensure that the
+ * caller can only hold a single lock at any given time. This auth. type will
+ * therefore not work with multi-locking.
+ */
+
+class dumb_lock;
+
+template <>
+class lock_auth <dumb_lock> : public lock_auth_base {
+public:
+  using lock_auth_base::count_type;
+
+  lock_auth() : writing(false) {}
+
+  count_type writing_count() const { return writing? 1 : 0; }
+  bool       always_write()  const { return true; }
+
+  ~lock_auth() {
+    //NOTE: this can't be in '~lock_auth_base'!
+    //NOTE: no point checking 'reading_count', since it's overrides will be ignored here
+    assert(!this->writing_count());
+  }
+
+private:
+  lock_auth(const lock_auth&);
+  lock_auth &operator = (const lock_auth&);
+
+  bool register_auth(bool read, bool lock_out, bool in_use) {
+    if (!this->test_auth(read, lock_out, in_use)) return false;
+    writing = true;
+    return true;
+  }
+
+  bool test_auth(bool /*read*/, bool /*lock_out*/, bool /*in_use*/) const {
+    return !writing;
+  }
+
+  void release_auth(bool /*read*/) {
+    assert(writing);
+    writing = false;
+  }
+
+  bool writing;
+};
+
 /*! \class lock_auth <broken_lock>
  *
  * This auth. type doesn't allow the caller to obtain any locks.
