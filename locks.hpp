@@ -230,24 +230,21 @@ private:
   r_lock &operator = (const r_lock&);
 
 public:
-  count_type lock(lock_auth_base *auth, bool read, bool /*block*/ = true, bool test = false) {
+  count_type lock(lock_auth_base *auth, bool read, bool /*block*/ = true, bool /*test*/ = false) {
     if (!read) return -1;
+    //NOTE: because this container can't be a part of a deadlock, it's never
+    //considered in use and the lock isn't counted. the 'auth' check is entirely
+    //to allow for an auth. that denies all locks.
+    if (!register_or_test_auth(auth, true, false, false, true)) return -1;
     //NOTE: this is atomic
     count_type new_readers = ++readers;
     //(check the copy!)
     assert(new_readers > 0);
-    //(if 'new_readers == 1' then this container was not in use; really only
-    //useful for multi-lock compatibility.)
-    if (!register_or_test_auth(auth, true, false, new_readers == (count_type) 1, test)) {
-      --readers;
-      return -1;
-    }
     return new_readers;
   }
 
-  count_type unlock(lock_auth_base *auth, bool read, bool test = false) {
+  count_type unlock(lock_auth_base */*auth*/, bool read, bool /*test*/ = false) {
     if (!read) return -1;
-    if (!test) release_auth(auth, true);
     //NOTE: this is atomic
     count_type new_readers = --readers;
     //(check the copy!)
