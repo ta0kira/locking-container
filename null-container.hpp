@@ -74,16 +74,23 @@ public:
   using base::proxy;
   using base::auth_type;
 
-  ~null_container() {
-    this->get_auth(NULL);
-  }
+  null_container() {}
 
+private:
+  null_container(const null_container&);
+  null_container &operator = (const null_container&);
+
+public:
   inline proxy get_auth(auth_type &authorization, bool block = true) {
     return this->get_auth(authorization.get(), block);
   }
 
   inline proxy get_auth(lock_auth_base *authorization, bool block = true) {
     return proxy(true, &locks, authorization, block, NULL);
+  }
+
+  ~null_container() {
+    this->get_auth(NULL);
   }
 
 private:
