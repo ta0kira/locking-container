@@ -123,7 +123,7 @@ public:
 
 private:
   bool register_auth(bool read, bool lock_out, bool /*in_use*/, bool test_auth) {
-    if (!read)              return false;
+    if (!read)               return false;
     if (reading && lock_out) return false;
     if (test_auth) return true;
     ++reading;
@@ -162,7 +162,7 @@ private:
 
   bool register_auth(bool /*read*/, bool /*lock_out*/, bool in_use, bool test_auth) {
     if (writing && in_use) return false;
-    if (test_auth) return true;
+    if (test_auth)         return true;
     ++writing;
     assert(writing > 0);
     return true;

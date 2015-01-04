@@ -147,18 +147,62 @@ public:
   typedef object_proxy <const type> const_proxy;
   typedef lock_auth_base::auth_type auth_type;
 
+  /** @name Accessor Functions
+  *
+  */
+  //@{
+
+  /*! \brief Retrieve a writable proxy to the contained object.
+   *
+   * @see object_proxy
+   * \attention Always check that the returned object contains a valid
+   * pointer with object_proxy::operator!. The reference will always be
+   * invalid if a lock hasn't been obtained.
+   * \attention The returned object should only be passed by value, and it
+   * should only be passed within the same thread that
+   * \ref locking_container::get was called from. This is because the proxy
+   * object uses reference counting that isn't reentrant.
+   * \param block Should the call block for a lock?
+   *
+   * \return proxy object
+   */
   inline proxy get(bool block = true) {
     return this->get_auth(NULL, block);
   }
 
+  /*! \brief Retrieve a read-only proxy to the contained object.
+   *
+   * @see get
+   * \param block Should the call block for a lock?
+   *
+   * \return proxy object
+   */
   inline const_proxy get_const(bool block = true) {
     return this->get_auth_const(NULL, block);
   }
 
+  /*! \brief Retrieve a writable proxy to the contained object using deadlock
+   *  prevention.
+   *
+   * @see get
+   * \param authorization Authorization object to prevent deadlocks.
+   * \param block Should the call block for a lock?
+   *
+   * \return proxy object
+   */
   inline proxy get_auth(auth_type &authorization, bool block = true) {
     return this->get_auth(authorization.get(), block);
   }
 
+  /*! \brief Retrieve a read-only proxy to the contained object using deadlock
+   *  prevention.
+   *
+   * @see get
+   * \param authorization Authorization object to prevent deadlocks.
+   * \param block Should the call block for a lock?
+   *
+   * \return proxy object
+   */
   inline const_proxy get_auth_const(auth_type &authorization, bool block = true) {
     return this->get_auth_const(authorization.get(), block);
   }
@@ -166,24 +210,48 @@ public:
   virtual proxy       get_auth(lock_auth_base *authorization, bool block = true)       = 0;
   virtual const_proxy get_auth_const(lock_auth_base *authorization, bool block = true) = 0;
 
+  /*! \brief Retrieve a writable proxy to the contained object using deadlock
+   *  prevention and multiple locking functionality.
+   *
+   * @see get_auth
+   * \param multi_lock Multi-lock object to manage multiple locks.
+   * \param authorization Authorization object to prevent deadlocks.
+   * \param block Should the call block for a lock?
+   *
+   * \return proxy object
+   */
   inline proxy get_multi(null_container_base &multi_lock, lock_auth_base *authorization, bool block = true) {
     return this->get_multi(multi_lock.get_lock_object(), authorization, block);
   }
 
+  /*! \brief Retrieve a read-only proxy to the contained object using deadlock
+   *  prevention and multiple locking functionality.
+   *
+   * @see get_auth
+   * \param multi_lock Multi-lock object to manage multiple locks.
+   * \param authorization Authorization object to prevent deadlocks.
+   * \param block Should the call block for a lock?
+   *
+   * \return proxy object
+   */
   inline const_proxy get_multi_const(null_container_base &multi_lock,
     lock_auth_base *authorization, bool block = true) {
     return this->get_multi_const(multi_lock.get_lock_object(), authorization, block);
   }
 
+  /*! @see get_multi.*/
   inline proxy get_multi(null_container_base &multi_lock, auth_type &authorization,
     bool block = true) {
     return this->get_multi(multi_lock, authorization.get(), block);
   }
 
+  /*! @see get_multi_const.*/
   inline const_proxy get_multi_const(null_container_base &multi_lock,
     auth_type &authorization, bool block = true) {
     return this->get_multi_const(multi_lock, authorization.get(), block);
   }
+
+  //@}
 
   virtual auth_type get_new_auth() const {
     return auth_type();
@@ -248,31 +316,22 @@ public:
   */
   //@{
 
-  /*! \brief Retrieve a proxy to the contained object.
-   *
-   * @see object_proxy
-   * \attention Always check that the returned object contains a valid
-   * pointer with object_proxy::operator!. The reference will always be
-   * invalid if a lock hasn't been obtained.
-   * \attention The returned object should only be passed by value, and it
-   * should only be passed within the same thread that
-   * \ref locking_container::get was called from. This is because the proxy
-   * object uses reference counting that isn't reentrant.
-   * \param authorization Authorization object to prevent deadlocks.
-   * \param block Should the call block for a lock?
-   *
-   * \return proxy object
-   */
+  /*! @see locking_container_base::get_auth.*/
   inline proxy get_auth(lock_auth_base *authorization, bool block = true) {
     return this->get_multi(NULL, authorization, block);
   }
 
-  /*! Const version of \ref locking_container::get.*/
+  /*! @see locking_container_base::get_auth_const.*/
   inline const_proxy get_auth_const(lock_auth_base *authorization, bool block = true) {
     return this->get_multi_const(NULL, authorization, block);
   }
 
   //@}
+
+  /** @name New Authorization Objects
+  *
+  */
+  //@{
 
   /*! Get a new authorization object.*/
   virtual auth_type get_new_auth() const {
@@ -283,6 +342,8 @@ public:
   static auth_type new_auth() {
     return auth_type(new auth_base_type);
   }
+
+  //@}
 
 private:
   inline proxy get_multi(lock_base *multi_lock, lock_auth_base *authorization, bool block = true) {
@@ -317,8 +378,10 @@ inline bool try_copy_container(locking_container_base <Type1> &left,
   bool block = true) {
   typename locking_container_base <Type1> ::proxy write = left.get_auth(authorization, block);
   if (!write) return false;
+
   typename locking_container_base <Type2> ::const_proxy read = right.get_auth_const(authorization, block);
   if (!read) return false;
+
   *write = *read;
   return true;
 }
@@ -364,11 +427,15 @@ inline bool try_copy_container(locking_container_base <Type1> &left,
   lock_auth_base *authorization, bool block = true, bool Trymulti_lock = true) {
   null_container::proxy multi;
   if (Trymulti_lock && !(multi = multi_lock.get_auth(authorization, block))) return false;
+
   typename locking_container_base <Type1> ::proxy write = left.get_multi(multi_lock, authorization, block);
   if (!write) return false;
+
   typename locking_container_base <Type2> ::const_proxy read = right.get_multi_const(multi_lock, authorization, block);
   if (!read) return false;
+
   if (Trymulti_lock) multi.clear();
+
   *write = *read;
   return true;
 }

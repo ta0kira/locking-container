@@ -241,7 +241,7 @@ public:
   count_type lock(lock_auth_base *auth, bool read, bool /*block*/ = true, bool test = false) {
     if (!read) return -1;
     if (!register_auth(auth, read, false, false, test)) return -1;
-    //NOTE: this should be atomic
+    //NOTE: this is atomic
     count_type new_readers = ++readers;
     //(check the copy!)
     assert(new_readers > 0);
@@ -251,7 +251,7 @@ public:
   count_type unlock(lock_auth_base *auth, bool read, bool test = false) {
     if (!read) return -1;
     if (!test) release_auth(auth, read);
-    //NOTE: this should be atomic
+    //NOTE: this is atomic
     count_type new_readers = --readers;
     //(check the copy!)
     assert(new_readers >= 0);
