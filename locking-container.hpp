@@ -80,8 +80,6 @@
 #ifndef locking_container_hpp
 #define locking_container_hpp
 
-#include <assert.h>
-
 #include "locks.hpp"
 #include "lock-auth.hpp"
 #include "object-proxy.hpp"
@@ -145,7 +143,7 @@ public:
    * \return proxy object
    */
   inline write_proxy get_write_auth(auth_type &authorization, bool block = true) {
-    assert(authorization);
+    if (!authorization) return write_proxy();
     return this->get_write_auth(authorization.get(), block);
   }
 
@@ -159,7 +157,7 @@ public:
    * \return proxy object
    */
   inline read_proxy get_read_auth(auth_type &authorization, bool block = true) {
-    assert(authorization);
+    if (!authorization) return read_proxy();
     return this->get_read_auth(authorization.get(), block);
   }
 
@@ -175,7 +173,7 @@ public:
    */
   inline write_proxy get_write_multi(null_container_base &multi_lock,
     auth_type &authorization, bool block = true) {
-    assert(authorization);
+    if (!authorization) return write_proxy();
     return this->get_write_multi(multi_lock.get_lock_object(), authorization.get(), block);
   }
 
@@ -191,7 +189,7 @@ public:
    */
   inline read_proxy get_read_multi(null_container_base &multi_lock,
     auth_type &authorization, bool block = true) {
-    assert(authorization);
+    if (!authorization) return read_proxy();
     return this->get_read_multi(multi_lock.get_lock_object(), authorization.get(), block);
   }
 
@@ -287,7 +285,7 @@ private:
 
   inline write_proxy get_write_multi(lock_base *multi_lock, lock_auth_base *authorization, bool block) {
     //NOTE: no read/write choice is given here!
-    return write_proxy(&contained, &locks, authorization, block, multi_lock);
+    return write_proxy(&contained, &locks, authorization, false, block, multi_lock);
   }
 
   inline read_proxy get_read_multi(lock_base *multi_lock, lock_auth_base *authorization,

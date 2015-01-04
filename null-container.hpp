@@ -33,8 +33,6 @@
 #ifndef null_container_hpp
 #define null_container_hpp
 
-#include <assert.h>
-
 #include "locks.hpp"
 #include "object-proxy.hpp"
 
@@ -49,7 +47,7 @@ public:
   typedef lock_auth_base::auth_type auth_type;
 
   virtual write_proxy get_write_auth(auth_type &authorization, bool block = true) {
-    assert(authorization);
+    if (!authorization) return write_proxy();
     return this->get_write_auth(authorization.get(), block);
   }
 
