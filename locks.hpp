@@ -243,7 +243,7 @@ public:
     return new_readers;
   }
 
-  count_type unlock(lock_auth_base */*auth*/, bool read, bool /*test*/ = false) {
+  count_type unlock(lock_auth_base* /*auth*/, bool read, bool /*test*/ = false) {
     if (!read) return -1;
     //NOTE: this is atomic
     count_type new_readers = --readers;

@@ -266,10 +266,12 @@ private:
 
 /*! \class lock_auth <dumb_lock>
  *
- * This auth. type only allows the caller to hold one lock at a time, with
- * absolutely no exceptions. This is useful if you want to ensure that the
- * caller can only hold a single lock at any given time. This auth. type will
- * therefore not work with multi-locking.
+ * This auth. type only allows the caller to hold one lock at a time. Unlike
+ * lock_auth <w_lock>, it doesn't matter if the container is in use. (One caveat
+ * to this is that r_lock doesn't actually lock; therefore, this auth. can
+ * potentially hold multiple locks on r_lock containers at one time.) This is
+ * useful if you want to ensure that the caller can only hold a single lock at
+ * any given time. This auth. type will not work with multi-locking.
  */
 
 class dumb_lock;
