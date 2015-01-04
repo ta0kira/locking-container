@@ -54,13 +54,13 @@ public:
   virtual bool       always_write()  const { return false; }
 
   /*! Attempt to predict if a read authorization would be granted.*/
-  inline bool guess_read_allowed(bool lock_out = true, bool in_use = true) {
-    return this->register_auth(true, lock_out, in_use, true);
+  inline bool guess_read_allowed(bool lock_out = true, bool in_use = true) const {
+    return this->test_auth(true, lock_out, in_use);
   }
 
   /*! Attempt to predict if a write authorization would be granted.*/
-  inline bool guess_write_allowed(bool lock_out = true, bool in_use = true) {
-    return this->register_auth(false, lock_out, in_use, true);
+  inline bool guess_write_allowed(bool lock_out = true, bool in_use = true) const {
+    return this->test_auth(false, lock_out, in_use);
   }
 
   virtual inline ~lock_auth_base() {}
@@ -68,8 +68,11 @@ public:
 private:
   friend class lock_base;
 
-  /*! Obtain lock authorization. If test_auth is true, this should not have side-effects.*/
-  virtual bool register_auth(bool read, bool lock_out, bool in_use, bool test_auth) = 0;
+  /*! Obtain lock authorization.*/
+  virtual bool register_auth(bool read, bool lock_out, bool in_use) = 0;
+
+  /*! Test lock authorization.*/
+  virtual bool test_auth(bool read, bool lock_out, bool in_use) const = 0;
 
   /*! Release lock authorization.*/
   virtual void release_auth(bool read) = 0;
@@ -123,11 +126,8 @@ private:
   lock_auth(const lock_auth&);
   lock_auth &operator = (const lock_auth&);
 
-  bool register_auth(bool read, bool lock_out, bool in_use, bool test_auth) {
-    if (writing && in_use)                return false;
-    if (reading && !read && in_use)       return false;
-    if ((reading || writing) && lock_out) return false;
-    if (test_auth) return true;
+  bool register_auth(bool read, bool lock_out, bool in_use) {
+    if (!this->test_auth(read, lock_out, in_use)) return false;
     if (read) {
       ++reading;
       assert(reading > 0);
@@ -135,6 +135,13 @@ private:
       ++writing;
       assert(writing > 0);
     }
+    return true;
+  }
+
+  bool test_auth(bool read, bool lock_out, bool in_use) const {
+    if (writing && in_use)                return false;
+    if (reading && !read && in_use)       return false;
+    if ((reading || writing) && lock_out) return false;
     return true;
   }
 
@@ -181,12 +188,16 @@ public:
   }
 
 private:
-  bool register_auth(bool read, bool lock_out, bool /*in_use*/, bool test_auth) {
-    if (!read)               return false;
-    if (reading && lock_out) return false;
-    if (test_auth) return true;
+  bool register_auth(bool read, bool lock_out, bool in_use) {
+    if (!this->test_auth(read, lock_out, in_use)) return false;
     ++reading;
     assert(reading > 0);
+    return true;
+  }
+
+  bool test_auth(bool read, bool lock_out, bool /*in_use*/) const {
+    if (!read)               return false;
+    if (reading && lock_out) return false;
     return true;
   }
 
@@ -230,12 +241,15 @@ private:
   lock_auth(const lock_auth&);
   lock_auth &operator = (const lock_auth&);
 
-  bool register_auth(bool /*read*/, bool /*lock_out*/, bool in_use, bool test_auth) {
-    if (writing && in_use) return false;
-    if (test_auth)         return true;
+  bool register_auth(bool read, bool lock_out, bool in_use) {
+    if (!this->test_auth(read, lock_out, in_use)) return false;
     ++writing;
     assert(writing > 0);
     return true;
+  }
+
+  bool test_auth(bool /*read*/, bool /*lock_out*/, bool in_use) const {
+    return !writing || !in_use;
   }
 
   void release_auth(bool /*read*/) {
@@ -259,8 +273,9 @@ public:
   using lock_auth_base::count_type;
 
 private:
-  bool register_auth(bool /*read*/, bool /*lock_out*/, bool /*in_use*/, bool /*test_auth*/) { return false; }
-  void release_auth(bool /*read*/) { assert(false); }
+  bool register_auth(bool /*read*/, bool /*lock_out*/, bool /*in_use*/)   { return false; }
+  bool test_auth(bool /*read*/, bool /*lock_out*/, bool /*in_use*/) const { return false; }
+  void release_auth(bool /*read*/)                                        { assert(false); }
 };
 
 #endif //authorization_hpp
