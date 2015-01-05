@@ -82,7 +82,7 @@ protected:
   virtual void release_auth(bool read, order_type order) = 0;
 
   /*! Allow locking of a lock with a particular order.*/
-  virtual bool order_allowed(order_type order) const {
+  virtual bool order_allowed(order_type order, bool /*in_use*/) const {
     //by default, disallow using auth. objects with ordered locks
     return !order;
   }
@@ -152,7 +152,7 @@ protected:
   }
 
   bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const {
-    if (!this->order_allowed(order)) return false;
+    if (!this->order_allowed(order, in_use)) return false;
     if (writing && in_use)                return false;
     if (reading && !read && in_use)       return false;
     if ((reading || writing) && lock_out) return false;
@@ -219,8 +219,8 @@ protected:
     return true;
   }
 
-  bool test_auth(bool read, bool lock_out, bool /*in_use*/, order_type order) const {
-    if (!this->order_allowed(order)) return false;
+  bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const {
+    if (!this->order_allowed(order, in_use)) return false;
     if (!read)               return false;
     if (reading && lock_out) return false;
     return true;
@@ -281,7 +281,7 @@ protected:
   }
 
   bool test_auth(bool /*read*/, bool /*lock_out*/, bool in_use, order_type order) const {
-    if (!this->order_allowed(order)) return false;
+    if (!this->order_allowed(order, in_use)) return false;
     return !writing || !in_use;
   }
 
@@ -300,62 +300,6 @@ template <>
 class lock_auth <w_lock> : public lock_auth_w_lock {};
 
 
-/*! \class lock_auth_dumb_lock
- *
- * This auth. type only allows the caller to hold one lock at a time. Unlike
- * lock_auth_w_lock, it doesn't matter if the container is in use. (One caveat
- * to this is that r_lock doesn't actually lock; therefore, this auth. can
- * potentially hold multiple locks on r_lock containers at one time.) This is
- * useful if you want to ensure that the caller can only hold a single lock at
- * any given time. This auth. type will not work with multi-locking.
- */
-
-class lock_auth_dumb_lock : public lock_auth_base {
-public:
-  using lock_auth_base::count_type;
-  using lock_auth_base::order_type;
-
-  lock_auth_dumb_lock() : writing(false) {}
-
-  count_type writing_count() const { return writing? 1 : 0; }
-
-  ~lock_auth_dumb_lock() {
-    //NOTE: this can't be in '~lock_auth_base'!
-    //NOTE: no point checking 'reading_count', since it's overrides will be ignored here
-    assert(!this->writing_count());
-  }
-
-private:
-  lock_auth_dumb_lock(const lock_auth_dumb_lock&);
-  lock_auth_dumb_lock &operator = (const lock_auth_dumb_lock&);
-
-protected:
-  bool register_auth(bool read, bool lock_out, bool in_use, order_type order) {
-    if (!this->test_auth(read, lock_out, in_use, order)) return false;
-    writing = true;
-    return true;
-  }
-
-  bool test_auth(bool /*read*/, bool /*lock_out*/, bool /*in_use*/, order_type order) const {
-    if (!this->order_allowed(order)) return false;
-    return !writing;
-  }
-
-  void release_auth(bool /*read*/, order_type /*order*/) {
-    assert(writing);
-    writing = false;
-  }
-
-private:
-  bool writing;
-};
-
-class dumb_lock;
-
-template <>
-class lock_auth <dumb_lock> : public lock_auth_dumb_lock {};
-
-
 /*! \class lock_auth_ordered_lock
  *
  * This auth. type is the same as lock_auth <Type> (first template parameter),
@@ -363,8 +307,9 @@ class lock_auth <dumb_lock> : public lock_auth_dumb_lock {};
  * (e.g., rw_lock, etc.), it behaves as lock_auth <Type>. If it's used with
  * ordered locks (e.g., ordered_lock), it will enforce a strict locking order:
  * It will disallow locking a lock with an order <= the highest lock order this
- * auth. holds a lock for. This allows for more lenient deadlock prevention;
- * however, if at any time this auth. obtains a lock on an unordered container,
+ * auth. holds a lock for. This allows for more lenient deadlock prevention. If
+ * the container to be locked isn't currently locked, strict locking order isn't
+ * enforced. If at any time this auth. obtains a lock on an unordered container,
  * deadlock prevention reverts to that of lock_auth_rw_lock.
  */
 
@@ -390,9 +335,9 @@ private:
 protected:
   typedef std::set <order_type> order_set;
 
-  virtual bool order_allowed(order_type order) const {
-    //disallow a lock only if it's ordered and its order isn't strictly greater
-    return !order || !ordered_locks.size() || *ordered_locks.rbegin() < order;
+  virtual bool order_allowed(order_type order, bool in_use) const {
+    //disallow a lock only if it's ordered and that order isn't strictly greater
+    return !in_use || !order || !ordered_locks.size() || *ordered_locks.rbegin() < order;
   }
 
   virtual void register_order(order_type order) {
@@ -451,8 +396,61 @@ class lock_auth <ordered_lock <r_lock> > : public lock_auth_ordered_lock <r_lock
 template <>
 class lock_auth <ordered_lock <w_lock> > : public lock_auth_ordered_lock <w_lock> {};
 
+
+/*! \class lock_auth_dumb_lock
+ *
+ * This auth. type only allows the caller to hold one lock at a time. Unlike
+ * lock_auth_w_lock, it doesn't matter if the container is in use. (One caveat
+ * to this is that r_lock doesn't actually lock; therefore, this auth. can
+ * potentially hold multiple locks on r_lock containers at one time.) This is
+ * useful if you want to ensure that the caller can only hold a single lock at
+ * any given time. This auth. type will not work with multi-locking.
+ */
+
+class lock_auth_dumb_lock : public lock_auth_base {
+public:
+  using lock_auth_base::count_type;
+  using lock_auth_base::order_type;
+
+  lock_auth_dumb_lock() : writing(false) {}
+
+  count_type writing_count() const { return writing? 1 : 0; }
+
+  ~lock_auth_dumb_lock() {
+    //NOTE: this can't be in '~lock_auth_base'!
+    //NOTE: no point checking 'reading_count', since it's overrides will be ignored here
+    assert(!this->writing_count());
+  }
+
+private:
+  lock_auth_dumb_lock(const lock_auth_dumb_lock&);
+  lock_auth_dumb_lock &operator = (const lock_auth_dumb_lock&);
+
+protected:
+  bool register_auth(bool read, bool lock_out, bool in_use, order_type order) {
+    if (!this->test_auth(read, lock_out, in_use, order)) return false;
+    writing = true;
+    return true;
+  }
+
+  bool test_auth(bool /*read*/, bool /*lock_out*/, bool in_use, order_type order) const {
+    if (!this->order_allowed(order, in_use)) return false;
+    return !writing;
+  }
+
+  void release_auth(bool /*read*/, order_type /*order*/) {
+    assert(writing);
+    writing = false;
+  }
+
+private:
+  bool writing;
+};
+
+class dumb_lock;
+
 template <>
-class lock_auth <ordered_lock <dumb_lock> > : public lock_auth_ordered_lock <dumb_lock> {};
+class lock_auth <dumb_lock> : public lock_auth_dumb_lock {};
 
 
 /*! \class lock_auth_broken_lock
