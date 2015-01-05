@@ -47,15 +47,25 @@
  * corresponding lock types, as far as how many read and write locks can be held
  * at a given time. See lock-auth.hpp for more information.
  *
- * If you want both deadlock prevention and the ability for threads to hold
- * a write lock plus one or more other locks at the same time, you can create a
- * 'null_container' for use by all threads when obtaining locks for any object.
- * The behavior will be transparent until a thread requests a "multi-lock" by
- * attempting to obtain a write lock on the 'null_container'. This will block
- * all future locks on the objects, allowing the thread in question to lock as
- * many objects as it needs to. To access this behavior, use 'get_write_multi'
- * and 'get_read_multi' instead of 'get_write_auth' and 'get_read_auth', passing
- * the 'null_container' as the first argument.
+ * There are two alternatives for accessing multiple containers for writing when
+ * using deadlock prevention. Note that these only work all of your code uses
+ * the same strategy; deadlocking won't be prevented otherwise.
+ *
+ *   - Use multi-locking, which requires a global 'null_container' for use by
+ *     all threads when obtaining locks for any object. This functions by
+ *     keeping track of the locks on all objects. When a thread wants to hold
+ *     multiple write locks at once, it blocks for a write lock on the
+ *     'null_container', which ensures that it will have exclusive access to all
+ *     objects while it still holds that write lock.
+ *
+ *   - Use ordered_lock as the lock type for your containers. This type of lock
+ *     enforces a strict locking order when multiple locks are to be obtained.
+ *     Each container is assigned an order, and a thread is only authorized to
+ *     wait for a lock on a container that has a higher order than the highest
+ *     container order the thread already has a lock for. This is much more
+ *     efficient than the strategy above, but it requires that you establish an
+ *     order for all containers and that you respect that ordering when
+ *     obtaining multiple locks.
  *
  * Other notes:
  *

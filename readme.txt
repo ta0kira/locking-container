@@ -42,6 +42,14 @@ multiple write locks, as long as they are all for different objects. This
 effectively silences all other threads while the thread in question takes its
 pick of objects to lock. (See 'thread_multi' in test.cpp for an example.)
 
+An alternative to the above multi-locking strategy is to use containers with
+ordered locks. An ordered lock has an order number that determines what other
+containers can be subsequently locked. For example, if a thread has a container
+with order 1 locked, it can only lock containers with higher orders (e.g., 2, 3)
+while it still holds that lock. This is much more efficient than the multi-
+locking solution; however, it requires that a container order be established and
+maintained, and that ordering must be respected by all threads.
+
 See simple.cpp for example usage in a single thread. test.cpp contains examples
 with multiple threads, to include multiple write locks with deadlock prevention.
 
