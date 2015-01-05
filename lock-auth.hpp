@@ -95,7 +95,8 @@ private:
 
 template <class> class lock_auth;
 
-/*! \class lock_auth <rw_lock>
+
+/*! \class lock_auth_rw_lock
  *
  * This auth. type allows the caller to hold multiple read locks, or a single
  * write lock, but not both. Note that if another thread is waiting for a write
@@ -107,26 +108,23 @@ template <class> class lock_auth;
  * lock. (The 3rd case is what allows multi-lock to work.)
  */
 
-class rw_lock;
-
-template <>
-class lock_auth <rw_lock> : public lock_auth_base {
+class lock_auth_rw_lock : public lock_auth_base {
 public:
   using lock_auth_base::count_type;
 
-  lock_auth() : reading(0), writing(0) {}
+  lock_auth_rw_lock() : reading(0), writing(0) {}
 
   count_type reading_count() const { return reading; }
   count_type writing_count() const { return writing; }
 
-  ~lock_auth() {
+  ~lock_auth_rw_lock() {
     //NOTE: this can't be in '~lock_auth_base'!
     assert(!this->reading_count() && !this->writing_count());
   }
 
 private:
-  lock_auth(const lock_auth&);
-  lock_auth &operator = (const lock_auth&);
+  lock_auth_rw_lock(const lock_auth_rw_lock&);
+  lock_auth_rw_lock &operator = (const lock_auth_rw_lock&);
 
   bool register_auth(bool read, bool lock_out, bool in_use) {
     if (!this->test_auth(read, lock_out, in_use)) return false;
@@ -162,7 +160,13 @@ private:
   count_type reading, writing;
 };
 
-/*! \class lock_auth <r_lock>
+class rw_lock;
+
+template <>
+class lock_auth <rw_lock> : public lock_auth_rw_lock {};
+
+
+/*! \class lock_auth_r_lock
  *
  * This auth. type allows the caller to hold multiple read locks, but no write
  * locks. Note that if another thread is waiting for a write lock on the
@@ -173,24 +177,24 @@ private:
  * behavior as using it with only r_lock containers.
  */
 
-class r_lock;
-
-template <>
-class lock_auth <r_lock> : public lock_auth_base {
+class lock_auth_r_lock : public lock_auth_base {
 public:
   using lock_auth_base::count_type;
 
-  lock_auth() : reading(0) {}
+  lock_auth_r_lock() : reading(0) {}
 
   count_type reading_count() const { return reading; }
 
-  ~lock_auth() {
+  ~lock_auth_r_lock() {
     //NOTE: this can't be in '~lock_auth_base'!
     //NOTE: no point checking 'writing_count', since it's overrides will be ignored here
     assert(!this->reading_count());
   }
 
 private:
+  lock_auth_r_lock(const lock_auth_r_lock&);
+  lock_auth_r_lock &operator = (const lock_auth_r_lock&);
+
   bool register_auth(bool read, bool lock_out, bool in_use) {
     if (!this->test_auth(read, lock_out, in_use)) return false;
     ++reading;
@@ -213,7 +217,13 @@ private:
   count_type reading;
 };
 
-/*! \class lock_auth <w_lock>
+class r_lock;
+
+template <>
+class lock_auth <r_lock> : public lock_auth_r_lock {};
+
+
+/*! \class lock_auth_w_lock
  *
  * This auth. type allows the caller to hold no more than one lock at a time,
  * regardless of lock type. An exception to this behavior is if the container to
@@ -224,26 +234,23 @@ private:
  * the same behavior as using it with only w_lock containers.
  */
 
-class w_lock;
-
-template <>
-class lock_auth <w_lock> : public lock_auth_base {
+class lock_auth_w_lock : public lock_auth_base {
 public:
   using lock_auth_base::count_type;
 
-  lock_auth() : writing(0) {}
+  lock_auth_w_lock() : writing(0) {}
 
   count_type writing_count() const { return writing; }
 
-  ~lock_auth() {
+  ~lock_auth_w_lock() {
     //NOTE: this can't be in '~lock_auth_base'!
     //NOTE: no point checking 'reading_count', since it's overrides will be ignored here
     assert(!this->writing_count());
   }
 
 private:
-  lock_auth(const lock_auth&);
-  lock_auth &operator = (const lock_auth&);
+  lock_auth_w_lock(const lock_auth_w_lock&);
+  lock_auth_w_lock &operator = (const lock_auth_w_lock&);
 
   bool register_auth(bool read, bool lock_out, bool in_use) {
     if (!this->test_auth(read, lock_out, in_use)) return false;
@@ -264,36 +271,39 @@ private:
   count_type writing;
 };
 
-/*! \class lock_auth <dumb_lock>
+class w_lock;
+
+template <>
+class lock_auth <w_lock> : public lock_auth_w_lock {};
+
+
+/*! \class lock_auth_dumb_lock
  *
  * This auth. type only allows the caller to hold one lock at a time. Unlike
- * lock_auth <w_lock>, it doesn't matter if the container is in use. (One caveat
+ * lock_auth_w_lock, it doesn't matter if the container is in use. (One caveat
  * to this is that r_lock doesn't actually lock; therefore, this auth. can
  * potentially hold multiple locks on r_lock containers at one time.) This is
  * useful if you want to ensure that the caller can only hold a single lock at
  * any given time. This auth. type will not work with multi-locking.
  */
 
-class dumb_lock;
-
-template <>
-class lock_auth <dumb_lock> : public lock_auth_base {
+class lock_auth_dumb_lock : public lock_auth_base {
 public:
   using lock_auth_base::count_type;
 
-  lock_auth() : writing(false) {}
+  lock_auth_dumb_lock() : writing(false) {}
 
   count_type writing_count() const { return writing? 1 : 0; }
 
-  ~lock_auth() {
+  ~lock_auth_dumb_lock() {
     //NOTE: this can't be in '~lock_auth_base'!
     //NOTE: no point checking 'reading_count', since it's overrides will be ignored here
     assert(!this->writing_count());
   }
 
 private:
-  lock_auth(const lock_auth&);
-  lock_auth &operator = (const lock_auth&);
+  lock_auth_dumb_lock(const lock_auth_dumb_lock&);
+  lock_auth_dumb_lock &operator = (const lock_auth_dumb_lock&);
 
   bool register_auth(bool read, bool lock_out, bool in_use) {
     if (!this->test_auth(read, lock_out, in_use)) return false;
@@ -313,15 +323,18 @@ private:
   bool writing;
 };
 
-/*! \class lock_auth <broken_lock>
+class dumb_lock;
+
+template <>
+class lock_auth <dumb_lock> : public lock_auth_dumb_lock {};
+
+
+/*! \class lock_auth_broken_lock
  *
  * This auth. type doesn't allow the caller to obtain any locks.
  */
 
-struct broken_lock;
-
-template <>
-class lock_auth <broken_lock> : public lock_auth_base {
+class lock_auth_broken_lock : public lock_auth_base {
 public:
   using lock_auth_base::count_type;
 
@@ -330,5 +343,10 @@ private:
   bool test_auth(bool /*read*/, bool /*lock_out*/, bool /*in_use*/) const { return false; }
   void release_auth(bool /*read*/)                                        { assert(false); }
 };
+
+struct broken_lock;
+
+template <>
+class lock_auth <broken_lock> : public lock_auth_broken_lock {};
 
 #endif //authorization_hpp
