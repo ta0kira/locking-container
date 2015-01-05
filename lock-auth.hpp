@@ -151,7 +151,7 @@ protected:
   }
 
   bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const {
-    if (!this->order_allowed(order)) return false;;
+    if (!this->order_allowed(order)) return false;
     if (writing && in_use)                return false;
     if (reading && !read && in_use)       return false;
     if ((reading || writing) && lock_out) return false;
@@ -293,7 +293,7 @@ protected:
   }
 
   bool test_auth(bool read, bool lock_out, bool /*in_use*/, order_type order) const {
-    if (!this->order_allowed(order)) return false;;
+    if (!this->order_allowed(order)) return false;
     if (!read)               return false;
     if (reading && lock_out) return false;
     return true;
@@ -352,7 +352,7 @@ protected:
   }
 
   bool test_auth(bool /*read*/, bool /*lock_out*/, bool in_use, order_type order) const {
-    if (!this->order_allowed(order)) return false;;
+    if (!this->order_allowed(order)) return false;
     return !writing || !in_use;
   }
 
@@ -406,7 +406,7 @@ protected:
   }
 
   bool test_auth(bool /*read*/, bool /*lock_out*/, bool /*in_use*/, order_type order) const {
-    if (!this->order_allowed(order)) return false;;
+    if (!this->order_allowed(order)) return false;
     return !writing;
   }
 
