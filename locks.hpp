@@ -403,6 +403,7 @@ private:
  * \attention This lock will not work with unordered auth. types. Better put,
  * unordered auth. types (e.g., lock_auth_rw_lock) won't authorize a lock on a
  * container with a ordered_lock.
+ * \attention This lock will not allow locks without an auth. object.
  */
 
 template <class Base = rw_lock>
@@ -411,9 +412,20 @@ private:
   typedef Base base;
 
 public:
+  using typename base::count_type;
   using typename base::order_type;
 
   ordered_lock(order_type new_order) : order(new_order) {}
+
+  count_type lock(lock_auth_base *auth, bool read, bool block = true, bool test = false) {
+    if (!auth) return -1;
+    return this->base::lock(auth, read, block, test);
+  }
+
+  count_type unlock(lock_auth_base *auth, bool read, bool test = false) {
+    if (!auth) return -1;
+    return this->base::unlock(auth, read, test);
+  }
 
   virtual order_type get_order() const {
     return order;

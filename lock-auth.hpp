@@ -171,6 +171,7 @@ protected:
     }
   }
 
+private:
   count_type reading, writing;
 };
 
@@ -231,6 +232,7 @@ protected:
     --reading;
   }
 
+private:
   count_type reading;
 };
 
@@ -288,6 +290,7 @@ protected:
     --writing;
   }
 
+private:
   count_type writing;
 };
 
@@ -343,6 +346,7 @@ protected:
     writing = false;
   }
 
+private:
   bool writing;
 };
 
@@ -413,7 +417,7 @@ protected:
   }
 
   bool register_auth(bool read, bool lock_out, bool in_use, order_type order) {
-    //NOTE: this calls the overridden 'order_allowed' above
+    //NOTE: this calls the overridden 'order_allowed' above and 'test_auth' below
     if (!this->base::register_auth(read, lock_out, in_use, order)) return false;
     this->register_order(order);
     return true;
@@ -431,6 +435,7 @@ protected:
     this->base::release_auth(read, order);
   }
 
+private:
   order_set  ordered_locks;
   count_type unordered_locks;
 };
