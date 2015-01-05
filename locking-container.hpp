@@ -98,10 +98,11 @@
 template <class Type>
 class locking_container_base {
 public:
-  typedef Type                      type;
-  typedef object_proxy <type>       write_proxy;
-  typedef object_proxy <const type> read_proxy;
-  typedef lock_auth_base::auth_type auth_type;
+  typedef Type                       type;
+  typedef object_proxy <type>        write_proxy;
+  typedef object_proxy <const type>  read_proxy;
+  typedef lock_auth_base::auth_type  auth_type;
+  typedef lock_auth_base::order_type order_type;
 
   /** @name Accessor Functions
    *
@@ -195,8 +196,14 @@ public:
 
   //@}
 
+  /*! Get a new authorization object.*/
   virtual auth_type get_new_auth() const {
     return auth_type();
+  }
+
+  /*! Get the container's order.*/
+  virtual order_type get_order() const {
+    return 0;
   }
 
   virtual inline ~locking_container_base() {}
@@ -240,6 +247,7 @@ public:
   using typename base::write_proxy;
   using typename base::read_proxy;
   using typename base::auth_type;
+  using typename base::order_type;
   //NOTE: this is needed so that the 'lock_auth_base' variants are pulled in
   using base::get_write_auth;
   using base::get_read_auth;
@@ -248,16 +256,32 @@ public:
 
   /*! \brief Constructor.
    *
-   * \param Object Object to copy as contained object.
+   * \param object object to copy as contained object.
    */
-  explicit locking_container(const type &Object = type()) : contained(Object) {}
+  explicit locking_container() : contained() {}
+
+  /*! \brief Constructor.
+   *
+   * \param object object to copy as contained object.
+   * \param args arguments to pass to the lock's constructor.
+   */
+  template <class ... Types>
+  explicit locking_container(type &&object, Types ... args) : contained(object), locks(args...) {}
+
+  /*! \brief Constructor.
+   *
+   * \param object object to copy as contained object.
+   * \param args arguments to pass to the lock's constructor.
+   */
+  template <class ... Types>
+  explicit locking_container(const type &object, Types ... args) : contained(object), locks(args...) {}
 
 private:
   locking_container(const locking_container&);
   locking_container &operator = (const locking_container&);
 
 public:
-  /** @name New Authorization Objects
+  /** @name Authorization
    *
    */
   //@{
@@ -270,6 +294,11 @@ public:
   /*! Get a new authorization object.*/
   static auth_type new_auth() {
     return auth_type(new auth_base_type);
+  }
+
+  /*! Get the container's order.*/
+  virtual order_type get_order() const {
+    return locks.get_order();
   }
 
   //@}
@@ -337,13 +366,19 @@ template <class Type1, class Type2>
 inline bool try_copy_container(locking_container_base <Type1> &left,
   locking_container_base <Type2> &right, lock_auth_base::auth_type &authorization,
   bool block = true) {
-  typename locking_container_base <Type1> ::write_proxy write =
-    left.get_write_auth(authorization, block);
-  if (!write) return false;
+  typename locking_container_base <Type1> ::write_proxy write;
+  typename locking_container_base <Type2> ::read_proxy  read;
 
-  typename locking_container_base <Type2> ::read_proxy read =
-    right.get_read_auth(authorization, block);
-  if (!read) return false;
+  //NOTE: if either is 0, the order is arbitrary
+  if (left.get_order() < right.get_order()) {
+    write = left.get_write_auth(authorization, block);
+    read  = right.get_read_auth(authorization, block);
+  } else {
+    read  = right.get_read_auth(authorization, block);
+    write = left.get_write_auth(authorization, block);
+  }
+
+  if (!write || !read) return false;
 
   *write = *read;
   return true;
@@ -373,6 +408,8 @@ inline bool try_copy_container(locking_container_base <Type1> &left,
   lock_auth_base::auth_type &authorization, bool block = true, bool try_multi = true) {
   null_container::write_proxy multi;
   if (try_multi && !(multi = multi_lock.get_write_auth(authorization, block))) return false;
+
+  //NOTE: multi-lock isn't necessary and/or doesn't work with ordered locks
 
   typename locking_container_base <Type1> ::write_proxy write =
     left.get_write_multi(multi_lock, authorization, block);

@@ -33,6 +33,8 @@
 #ifndef authorization_hpp
 #define authorization_hpp
 
+#include <set>
+
 #include <assert.h>
 
 
@@ -47,34 +49,43 @@ class lock_base;
 class lock_auth_base {
 public:
   typedef long count_type;
+  typedef long order_type;
   typedef std::shared_ptr <lock_auth_base> auth_type;
 
   virtual count_type reading_count() const { return 0; }
   virtual count_type writing_count() const { return 0; }
 
   /*! Attempt to predict if a read authorization would be granted.*/
-  inline bool guess_read_allowed(bool lock_out = true, bool in_use = true) const {
-    return this->test_auth(true, lock_out, in_use);
+  inline bool guess_read_allowed(bool lock_out = true, bool in_use = true,
+    order_type order = order_type()) const {
+    return this->test_auth(true, lock_out, in_use, order);
   }
 
   /*! Attempt to predict if a write authorization would be granted.*/
-  inline bool guess_write_allowed(bool lock_out = true, bool in_use = true) const {
-    return this->test_auth(false, lock_out, in_use);
+  inline bool guess_write_allowed(bool lock_out = true, bool in_use = true,
+    order_type order = order_type()) const {
+    return this->test_auth(false, lock_out, in_use, order);
   }
 
   virtual inline ~lock_auth_base() {}
 
-private:
+protected:
   friend class lock_base;
 
   /*! Obtain lock authorization.*/
-  virtual bool register_auth(bool read, bool lock_out, bool in_use) = 0;
+  virtual bool register_auth(bool read, bool lock_out, bool in_use, order_type order) = 0;
 
   /*! Test lock authorization.*/
-  virtual bool test_auth(bool read, bool lock_out, bool in_use) const = 0;
+  virtual bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const = 0;
 
   /*! Release lock authorization.*/
-  virtual void release_auth(bool read) = 0;
+  virtual void release_auth(bool read, order_type order) = 0;
+
+  /*! Allow locking of a lock with a particular order.*/
+  virtual bool order_allowed(order_type order) const {
+    //by default, disallow using auth. objects with ordered locks
+    return !order;
+  }
 };
 
 
@@ -126,8 +137,9 @@ private:
   lock_auth_rw_lock(const lock_auth_rw_lock&);
   lock_auth_rw_lock &operator = (const lock_auth_rw_lock&);
 
-  bool register_auth(bool read, bool lock_out, bool in_use) {
-    if (!this->test_auth(read, lock_out, in_use)) return false;
+protected:
+  bool register_auth(bool read, bool lock_out, bool in_use, order_type order) {
+    if (!this->test_auth(read, lock_out, in_use, order)) return false;
     if (read) {
       ++reading;
       assert(reading > 0);
@@ -138,14 +150,15 @@ private:
     return true;
   }
 
-  bool test_auth(bool read, bool lock_out, bool in_use) const {
+  bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const {
+    if (!this->order_allowed(order)) return false;;
     if (writing && in_use)                return false;
     if (reading && !read && in_use)       return false;
     if ((reading || writing) && lock_out) return false;
     return true;
   }
 
-  void release_auth(bool read) {
+  void release_auth(bool read, order_type /*order*/) {
     if (read) {
       //NOTE: don't check 'writing' because there are a few exceptions!
       assert(reading > 0);
@@ -164,6 +177,82 @@ class rw_lock;
 
 template <>
 class lock_auth <rw_lock> : public lock_auth_rw_lock {};
+
+
+/*! \class lock_auth_ordered_lock
+ *
+ * This auth. type is the same as lock_auth_rw_lock, except it keeps track of
+ * lock orders. If it's used with unordered locks (e.g., rw_lock, etc.), it
+ * behaves as lock_auth_rw_lock. If it's used with ordered locks (e.g.,
+ * ordered_lock), it will enforce a strict locking order: It will disallow
+ * locking a lock with an order <= the highest lock order this auth. holds a
+ * lock for. This allows for more lenient deadlock prevention; however, if at
+ * any time this auth. obtains a lock on an unordered container, deadlock
+ * prevention reverts to that of lock_auth_rw_lock.
+ */
+
+class lock_auth_ordered_lock : public lock_auth_rw_lock {
+public:
+  lock_auth_ordered_lock() : unordered_locks(0) {}
+
+private:
+  lock_auth_ordered_lock(const lock_auth_ordered_lock&);
+  lock_auth_ordered_lock &operator = (const lock_auth_ordered_lock&);
+
+protected:
+  typedef std::set <order_type> order_set;
+
+  virtual bool order_allowed(order_type order) const {
+    //disallow a lock only if it's ordered and its order isn't strictly greater
+    return !order || !ordered_locks.size() || *ordered_locks.rbegin() < order;
+  }
+
+  virtual void register_order(order_type order) {
+    if (!order) {
+      ++unordered_locks;
+      assert(unordered_locks);
+    } else {
+      ordered_locks.insert(order);
+    }
+  }
+
+  virtual void release_order(order_type order) {
+    if (!order) {
+      assert(unordered_locks);
+      --unordered_locks;
+    } else {
+      order_set::iterator found = ordered_locks.find(order);
+      assert(found != ordered_locks.end());
+      ordered_locks.erase(found);
+    }
+  }
+
+  bool register_auth(bool read, bool lock_out, bool in_use, order_type order) {
+    if (!this->lock_auth_rw_lock::register_auth(read, lock_out, in_use, order)) return false;
+    this->register_order(order);
+    return true;
+  }
+
+  bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const {
+    bool normal_rules = !order || unordered_locks;
+    //(if order rules are respected, 'lock_out' and 'in_use' aren't needed)
+    return this->lock_auth_rw_lock::test_auth(read, normal_rules? lock_out : false,
+      normal_rules? in_use : false, order);
+  }
+
+  void release_auth(bool read, order_type order) {
+    this->release_order(order);
+    this->lock_auth_rw_lock::release_auth(read, order);
+  }
+
+  order_set  ordered_locks;
+  count_type unordered_locks;
+};
+
+class ordered_lock;
+
+template <>
+class lock_auth <ordered_lock> : public lock_auth_ordered_lock {};
 
 
 /*! \class lock_auth_r_lock
@@ -195,20 +284,22 @@ private:
   lock_auth_r_lock(const lock_auth_r_lock&);
   lock_auth_r_lock &operator = (const lock_auth_r_lock&);
 
-  bool register_auth(bool read, bool lock_out, bool in_use) {
-    if (!this->test_auth(read, lock_out, in_use)) return false;
+protected:
+  bool register_auth(bool read, bool lock_out, bool in_use, order_type order) {
+    if (!this->test_auth(read, lock_out, in_use, order)) return false;
     ++reading;
     assert(reading > 0);
     return true;
   }
 
-  bool test_auth(bool read, bool lock_out, bool /*in_use*/) const {
+  bool test_auth(bool read, bool lock_out, bool /*in_use*/, order_type order) const {
+    if (!this->order_allowed(order)) return false;;
     if (!read)               return false;
     if (reading && lock_out) return false;
     return true;
   }
 
-  void release_auth(bool read) {
+  void release_auth(bool read, order_type /*order*/) {
     assert(read);
     assert(reading > 0);
     --reading;
@@ -252,18 +343,20 @@ private:
   lock_auth_w_lock(const lock_auth_w_lock&);
   lock_auth_w_lock &operator = (const lock_auth_w_lock&);
 
-  bool register_auth(bool read, bool lock_out, bool in_use) {
-    if (!this->test_auth(read, lock_out, in_use)) return false;
+protected:
+  bool register_auth(bool read, bool lock_out, bool in_use, order_type order) {
+    if (!this->test_auth(read, lock_out, in_use, order)) return false;
     ++writing;
     assert(writing > 0);
     return true;
   }
 
-  bool test_auth(bool /*read*/, bool /*lock_out*/, bool in_use) const {
+  bool test_auth(bool /*read*/, bool /*lock_out*/, bool in_use, order_type order) const {
+    if (!this->order_allowed(order)) return false;;
     return !writing || !in_use;
   }
 
-  void release_auth(bool /*read*/) {
+  void release_auth(bool /*read*/, order_type /*order*/) {
     assert(writing > 0);
     --writing;
   }
@@ -305,17 +398,19 @@ private:
   lock_auth_dumb_lock(const lock_auth_dumb_lock&);
   lock_auth_dumb_lock &operator = (const lock_auth_dumb_lock&);
 
-  bool register_auth(bool read, bool lock_out, bool in_use) {
-    if (!this->test_auth(read, lock_out, in_use)) return false;
+protected:
+  bool register_auth(bool read, bool lock_out, bool in_use, order_type order) {
+    if (!this->test_auth(read, lock_out, in_use, order)) return false;
     writing = true;
     return true;
   }
 
-  bool test_auth(bool /*read*/, bool /*lock_out*/, bool /*in_use*/) const {
+  bool test_auth(bool /*read*/, bool /*lock_out*/, bool /*in_use*/, order_type order) const {
+    if (!this->order_allowed(order)) return false;;
     return !writing;
   }
 
-  void release_auth(bool /*read*/) {
+  void release_auth(bool /*read*/, order_type /*order*/) {
     assert(writing);
     writing = false;
   }
@@ -338,10 +433,10 @@ class lock_auth_broken_lock : public lock_auth_base {
 public:
   using lock_auth_base::count_type;
 
-private:
-  bool register_auth(bool /*read*/, bool /*lock_out*/, bool /*in_use*/)   { return false; }
-  bool test_auth(bool /*read*/, bool /*lock_out*/, bool /*in_use*/) const { return false; }
-  void release_auth(bool /*read*/)                                        { assert(false); }
+protected:
+  bool register_auth(bool /*read*/, bool /*lock_out*/, bool /*in_use*/, order_type /*order*/)   { return false; }
+  bool test_auth(bool /*read*/, bool /*lock_out*/, bool /*in_use*/, order_type /*order*/) const { return false; }
+  void release_auth(bool /*read*/, order_type /*order*/)                                        { assert(false); }
 };
 
 struct broken_lock;

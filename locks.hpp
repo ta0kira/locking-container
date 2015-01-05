@@ -49,6 +49,7 @@
 class lock_base {
 public:
   typedef lock_auth_base::count_type count_type;
+  typedef lock_auth_base::order_type order_type;
 
   /*! Return < 0 must mean failure. Should return the current number of read locks on success.*/
   virtual count_type lock(lock_auth_base *auth, bool read, bool block = true, bool test = false) = 0;
@@ -56,16 +57,20 @@ public:
   /*! Return < 0 must mean failure. Should return the current number of read locks on success.*/
   virtual count_type unlock(lock_auth_base *auth, bool read, bool test = false) = 0;
 
-protected:
-  static inline bool register_or_test_auth(lock_auth_base *auth, bool read, bool lock_out,
-    bool in_use, bool test_auth) {
-    if (!auth) return true;
-    return test_auth? auth->test_auth(read, lock_out, in_use) :
-                      auth->register_auth(read, lock_out, in_use);
+  virtual order_type get_order() const {
+    return 0;
   }
 
-  static inline void release_auth(lock_auth_base *auth, bool read) {
-    if (auth) auth->release_auth(read);
+protected:
+  static inline bool register_or_test_auth(lock_auth_base *auth, bool read, bool lock_out,
+    bool in_use, order_type order, bool test_auth) {
+    if (!auth) return true;
+    return test_auth? auth->test_auth(read, lock_out, in_use, order) :
+                      auth->register_auth(read, lock_out, in_use, order);
+  }
+
+  static inline void release_auth(lock_auth_base *auth, bool read, order_type order) {
+    if (auth) auth->release_auth(read, order);
   }
 };
 
@@ -103,7 +108,7 @@ public:
     bool writer_reads = auth && the_writer == auth && read;
     //make sure this is an authorized lock type for the caller
     if (!register_or_test_auth(auth, read, writer_reads? false : writer_waiting,
-                               writer_reads? false : (writer || readers), test)) {
+                               writer_reads? false : (writer || readers), this->get_order(), test)) {
       pthread_mutex_unlock(&master_lock);
       return -1;
     }
@@ -111,7 +116,7 @@ public:
     bool must_block = writer || writer_waiting || (!read && readers);
     //exception to blocking: if 'auth' holds the write lock and a read is requested
     if (!writer_reads && !block && must_block) {
-      if (!test) release_auth(auth, read);
+      if (!test) release_auth(auth, read, this->get_order());
       pthread_mutex_unlock(&master_lock);
       return -1;
     }
@@ -123,7 +128,7 @@ public:
       //a read lock and there is a writer waiting
       if (!writer_reads) while (writer || writer_waiting) {
         if (pthread_cond_wait(&read_wait, &master_lock) != 0) {
-          if (!test) release_auth(auth, read);
+          if (!test) release_auth(auth, read, this->get_order());
           --readers_waiting;
           pthread_mutex_unlock(&master_lock);
           return -1;
@@ -143,7 +148,7 @@ public:
         //NOTE: use 'read_wait' here, since that's what a write unlock broadcasts on
         //NOTE: another thread should be blocking in 'write_wait' below
         if (pthread_cond_wait(&read_wait, &master_lock) != 0) {
-          if (!test) release_auth(auth, read);
+          if (!test) release_auth(auth, read, this->get_order());
           --readers_waiting;
           pthread_mutex_unlock(&master_lock);
           return -1;
@@ -154,7 +159,7 @@ public:
       //get a write lock
       while (writer || readers) {
         if (pthread_cond_wait(&write_wait, &master_lock) != 0) {
-          if (!test) release_auth(auth, read);
+          if (!test) release_auth(auth, read, this->get_order());
           writer_waiting = false;
           pthread_mutex_unlock(&master_lock);
           return -1;
@@ -170,7 +175,7 @@ public:
 
   count_type unlock(lock_auth_base *auth, bool read, bool test = false) {
     if (pthread_mutex_lock(&master_lock) != 0) return -1;
-    if (!test) release_auth(auth, read);
+    if (!test) release_auth(auth, read, this->get_order());
     if (read) {
       assert(((auth && the_writer == auth) || !writer) && readers > 0);
       count_type new_readers = --readers;
@@ -211,6 +216,36 @@ private:
 };
 
 
+/*! \class ordered_lock
+ *  \brief Lock object that allows multiple readers at once.
+ *
+ * This lock is the same as rw_lock, except it requires an order to be specified
+ * for the purposes of deadlock prevention. The lock must be initialized with an
+ * order value that dictates the order in which objects must be locked when
+ * multiple locks are to be held at once.
+ * \attention This lock will not work with unordered auth. types. Better put,
+ * unordered auth. types (e.g., lock_auth_rw_lock) won't authorize a lock on a
+ * container with a ordered_lock.
+ */
+
+class ordered_lock : public rw_lock {
+public:
+  ordered_lock(order_type new_order) : order(new_order) {
+    assert(order);
+  }
+
+  virtual order_type get_order() const {
+    return order;
+  }
+
+private:
+  ordered_lock(const ordered_lock&);
+  ordered_lock &operator = (const ordered_lock&);
+
+  const order_type order;
+};
+
+
 /*! \class r_lock
  *  \brief Lock object that allows multiple readers but no writers.
  *
@@ -235,7 +270,7 @@ public:
     //NOTE: because this container can't be a part of a deadlock, it's never
     //considered in use and the lock isn't counted. the 'auth' check is entirely
     //to allow for an auth. that denies all locks.
-    if (!register_or_test_auth(auth, true, false, false, true)) return -1;
+    if (!register_or_test_auth(auth, true, false, false, this->get_order(), true)) return -1;
     //NOTE: this is atomic
     count_type new_readers = ++readers;
     //(check the copy!)
@@ -287,12 +322,12 @@ public:
   count_type lock(lock_auth_base *auth, bool /*read*/, bool block = true, bool test = false) {
     if (pthread_mutex_lock(&master_lock) != 0) return -1;
     //NOTE: 'false' is passed instead of 'read' because this can lock out other readers
-    if (!register_or_test_auth(auth, false, writer, writer, test)) {
+    if (!register_or_test_auth(auth, false, writer, writer, this->get_order(), test)) {
       pthread_mutex_unlock(&master_lock);
       return -1;
     }
     if (!block && writer) {
-      if (!test) release_auth(auth, false);
+      if (!test) release_auth(auth, false, this->get_order());
       pthread_mutex_unlock(&master_lock);
       return -1;
     }
@@ -300,7 +335,7 @@ public:
     assert(writers_waiting > 0);
     while (writer) {
       if (pthread_cond_wait(&write_wait, &master_lock) != 0) {
-        if (!test) release_auth(auth, false);
+        if (!test) release_auth(auth, false, this->get_order());
         --writers_waiting;
         pthread_mutex_unlock(&master_lock);
         return -1;
@@ -314,7 +349,7 @@ public:
 
   count_type unlock(lock_auth_base *auth, bool /*read*/, bool test = false) {
     if (pthread_mutex_lock(&master_lock) != 0) return -1;
-    if (!test) release_auth(auth, false);
+    if (!test) release_auth(auth, false, this->get_order());
     assert(writer);
     writer = false;
     if (writers_waiting) {
@@ -363,16 +398,16 @@ private:
 
 public:
   count_type lock(lock_auth_base *auth, bool /*read*/, bool block = true, bool test = false) {
-    if (!register_or_test_auth(auth, false, true, true, test)) return -1;
+    if (!register_or_test_auth(auth, false, true, true, this->get_order(), test)) return -1;
     if ((block? pthread_mutex_lock : pthread_mutex_trylock)(&master_lock) != 0) {
-      if (!test) release_auth(auth, false);
+      if (!test) release_auth(auth, false, this->get_order());
       return -1;
     }
     return 0;
   }
 
   count_type unlock(lock_auth_base *auth, bool /*read*/, bool test = false) {
-    if (!test) release_auth(auth, false);
+    if (!test) release_auth(auth, false, this->get_order());
     return (pthread_mutex_unlock(&master_lock) == 0)? 0 : -1;
   }
 
