@@ -216,36 +216,6 @@ private:
 };
 
 
-/*! \class ordered_lock
- *  \brief Lock object that allows multiple readers at once.
- *
- * This lock is the same as rw_lock, except it requires an order to be specified
- * for the purposes of deadlock prevention. The lock must be initialized with an
- * order value that dictates the order in which objects must be locked when
- * multiple locks are to be held at once.
- * \attention This lock will not work with unordered auth. types. Better put,
- * unordered auth. types (e.g., lock_auth_rw_lock) won't authorize a lock on a
- * container with a ordered_lock.
- */
-
-class ordered_lock : public rw_lock {
-public:
-  ordered_lock(order_type new_order) : order(new_order) {
-    assert(order);
-  }
-
-  virtual order_type get_order() const {
-    return order;
-  }
-
-private:
-  ordered_lock(const ordered_lock&);
-  ordered_lock &operator = (const ordered_lock&);
-
-  const order_type order;
-};
-
-
 /*! \class r_lock
  *  \brief Lock object that allows multiple readers but no writers.
  *
@@ -419,6 +389,41 @@ public:
 
 private:
   pthread_mutex_t master_lock;
+};
+
+
+/*! \class ordered_lock
+ *  \brief Lock object that allows multiple readers at once.
+ *
+ * This lock is the same as Base (first template argument), except it requires
+ * an order to be specified for the purposes of deadlock prevention. The lock
+ * must be initialized with an order value >= 0 that dictates the order in which
+ * objects must be locked when multiple locks are to be held at once. An order
+ * of 0 means that the lock is unordered.
+ * \attention This lock will not work with unordered auth. types. Better put,
+ * unordered auth. types (e.g., lock_auth_rw_lock) won't authorize a lock on a
+ * container with a ordered_lock.
+ */
+
+template <class Base = rw_lock>
+class ordered_lock : public Base {
+private:
+  typedef Base base;
+
+public:
+  using typename base::order_type;
+
+  ordered_lock(order_type new_order) : order(new_order) {}
+
+  virtual order_type get_order() const {
+    return order;
+  }
+
+private:
+  ordered_lock(const ordered_lock&);
+  ordered_lock &operator = (const ordered_lock&);
+
+  const order_type order;
 };
 
 

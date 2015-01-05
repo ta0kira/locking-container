@@ -48,8 +48,8 @@ class lock_base;
 
 class lock_auth_base {
 public:
-  typedef long count_type;
-  typedef long order_type;
+  typedef long          count_type;
+  typedef unsigned long order_type;
   typedef std::shared_ptr <lock_auth_base> auth_type;
 
   virtual count_type reading_count() const { return 0; }
@@ -122,6 +122,7 @@ template <class> class lock_auth;
 class lock_auth_rw_lock : public lock_auth_base {
 public:
   using lock_auth_base::count_type;
+  using lock_auth_base::order_type;
 
   lock_auth_rw_lock() : reading(0), writing(0) {}
 
@@ -179,82 +180,6 @@ template <>
 class lock_auth <rw_lock> : public lock_auth_rw_lock {};
 
 
-/*! \class lock_auth_ordered_lock
- *
- * This auth. type is the same as lock_auth_rw_lock, except it keeps track of
- * lock orders. If it's used with unordered locks (e.g., rw_lock, etc.), it
- * behaves as lock_auth_rw_lock. If it's used with ordered locks (e.g.,
- * ordered_lock), it will enforce a strict locking order: It will disallow
- * locking a lock with an order <= the highest lock order this auth. holds a
- * lock for. This allows for more lenient deadlock prevention; however, if at
- * any time this auth. obtains a lock on an unordered container, deadlock
- * prevention reverts to that of lock_auth_rw_lock.
- */
-
-class lock_auth_ordered_lock : public lock_auth_rw_lock {
-public:
-  lock_auth_ordered_lock() : unordered_locks(0) {}
-
-private:
-  lock_auth_ordered_lock(const lock_auth_ordered_lock&);
-  lock_auth_ordered_lock &operator = (const lock_auth_ordered_lock&);
-
-protected:
-  typedef std::set <order_type> order_set;
-
-  virtual bool order_allowed(order_type order) const {
-    //disallow a lock only if it's ordered and its order isn't strictly greater
-    return !order || !ordered_locks.size() || *ordered_locks.rbegin() < order;
-  }
-
-  virtual void register_order(order_type order) {
-    if (!order) {
-      ++unordered_locks;
-      assert(unordered_locks);
-    } else {
-      ordered_locks.insert(order);
-    }
-  }
-
-  virtual void release_order(order_type order) {
-    if (!order) {
-      assert(unordered_locks);
-      --unordered_locks;
-    } else {
-      order_set::iterator found = ordered_locks.find(order);
-      assert(found != ordered_locks.end());
-      ordered_locks.erase(found);
-    }
-  }
-
-  bool register_auth(bool read, bool lock_out, bool in_use, order_type order) {
-    if (!this->lock_auth_rw_lock::register_auth(read, lock_out, in_use, order)) return false;
-    this->register_order(order);
-    return true;
-  }
-
-  bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const {
-    bool normal_rules = !order || unordered_locks;
-    //(if order rules are respected, 'lock_out' and 'in_use' aren't needed)
-    return this->lock_auth_rw_lock::test_auth(read, normal_rules? lock_out : false,
-      normal_rules? in_use : false, order);
-  }
-
-  void release_auth(bool read, order_type order) {
-    this->release_order(order);
-    this->lock_auth_rw_lock::release_auth(read, order);
-  }
-
-  order_set  ordered_locks;
-  count_type unordered_locks;
-};
-
-class ordered_lock;
-
-template <>
-class lock_auth <ordered_lock> : public lock_auth_ordered_lock {};
-
-
 /*! \class lock_auth_r_lock
  *
  * This auth. type allows the caller to hold multiple read locks, but no write
@@ -269,6 +194,7 @@ class lock_auth <ordered_lock> : public lock_auth_ordered_lock {};
 class lock_auth_r_lock : public lock_auth_base {
 public:
   using lock_auth_base::count_type;
+  using lock_auth_base::order_type;
 
   lock_auth_r_lock() : reading(0) {}
 
@@ -328,6 +254,7 @@ class lock_auth <r_lock> : public lock_auth_r_lock {};
 class lock_auth_w_lock : public lock_auth_base {
 public:
   using lock_auth_base::count_type;
+  using lock_auth_base::order_type;
 
   lock_auth_w_lock() : writing(0) {}
 
@@ -383,6 +310,7 @@ class lock_auth <w_lock> : public lock_auth_w_lock {};
 class lock_auth_dumb_lock : public lock_auth_base {
 public:
   using lock_auth_base::count_type;
+  using lock_auth_base::order_type;
 
   lock_auth_dumb_lock() : writing(false) {}
 
@@ -424,6 +352,104 @@ template <>
 class lock_auth <dumb_lock> : public lock_auth_dumb_lock {};
 
 
+/*! \class lock_auth_ordered_lock
+ *
+ * This auth. type is the same as lock_auth <Type> (first template parameter),
+ * except it keeps track of lock orders. If it's used with unordered locks
+ * (e.g., rw_lock, etc.), it behaves as lock_auth <Type>. If it's used with
+ * ordered locks (e.g., ordered_lock), it will enforce a strict locking order:
+ * It will disallow locking a lock with an order <= the highest lock order this
+ * auth. holds a lock for. This allows for more lenient deadlock prevention;
+ * however, if at any time this auth. obtains a lock on an unordered container,
+ * deadlock prevention reverts to that of lock_auth_rw_lock.
+ */
+
+template <class Type>
+class lock_auth_ordered_lock : public lock_auth <Type> {
+private:
+  typedef lock_auth <Type> base;
+
+public:
+  using typename base::count_type;
+  using typename base::order_type;
+
+  lock_auth_ordered_lock() : unordered_locks(0) {}
+
+  ~lock_auth_ordered_lock() {
+    assert(!unordered_locks && !ordered_locks.size());
+  }
+
+private:
+  lock_auth_ordered_lock(const lock_auth_ordered_lock&);
+  lock_auth_ordered_lock &operator = (const lock_auth_ordered_lock&);
+
+protected:
+  typedef std::set <order_type> order_set;
+
+  virtual bool order_allowed(order_type order) const {
+    //disallow a lock only if it's ordered and its order isn't strictly greater
+    return !order || !ordered_locks.size() || *ordered_locks.rbegin() < order;
+  }
+
+  virtual void register_order(order_type order) {
+    if (!order) {
+      ++unordered_locks;
+      assert(unordered_locks);
+    } else {
+      assert(ordered_locks.find(order) == ordered_locks.end());
+      ordered_locks.insert(order);
+    }
+  }
+
+  virtual void release_order(order_type order) {
+    if (!order) {
+      assert(unordered_locks);
+      --unordered_locks;
+    } else {
+      typename order_set::iterator found = ordered_locks.find(order);
+      assert(found != ordered_locks.end());
+      ordered_locks.erase(found);
+    }
+  }
+
+  bool register_auth(bool read, bool lock_out, bool in_use, order_type order) {
+    //NOTE: this calls the overridden 'order_allowed' above
+    if (!this->base::register_auth(read, lock_out, in_use, order)) return false;
+    this->register_order(order);
+    return true;
+  }
+
+  bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const {
+    bool normal_rules = !order || unordered_locks;
+    //(if order rules are respected, 'lock_out' and 'in_use' aren't needed)
+    return this->base::test_auth(read, normal_rules && lock_out,
+      normal_rules && in_use, order);
+  }
+
+  void release_auth(bool read, order_type order) {
+    this->release_order(order);
+    this->base::release_auth(read, order);
+  }
+
+  order_set  ordered_locks;
+  count_type unordered_locks;
+};
+
+template <class> class ordered_lock;
+
+template <>
+class lock_auth <ordered_lock <rw_lock> > : public lock_auth_ordered_lock <rw_lock> {};
+
+template <>
+class lock_auth <ordered_lock <r_lock> > : public lock_auth_ordered_lock <r_lock> {};
+
+template <>
+class lock_auth <ordered_lock <w_lock> > : public lock_auth_ordered_lock <w_lock> {};
+
+template <>
+class lock_auth <ordered_lock <dumb_lock> > : public lock_auth_ordered_lock <dumb_lock> {};
+
+
 /*! \class lock_auth_broken_lock
  *
  * This auth. type doesn't allow the caller to obtain any locks.
@@ -432,6 +458,7 @@ class lock_auth <dumb_lock> : public lock_auth_dumb_lock {};
 class lock_auth_broken_lock : public lock_auth_base {
 public:
   using lock_auth_base::count_type;
+  using lock_auth_base::order_type;
 
 protected:
   bool register_auth(bool /*read*/, bool /*lock_out*/, bool /*in_use*/, order_type /*order*/)   { return false; }
