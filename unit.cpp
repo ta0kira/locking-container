@@ -158,14 +158,20 @@ public:
   }
 
   protected_chopstick::write_proxy write_left() {
+    //(method 2)
     if (multi) return left->get_write_multi(*multi, auth);
+    //(methods 1 & 3)
     if (auth)  return left->get_write_auth(auth);
+    //(method 0)
     return left->get_write();
   }
 
   protected_chopstick::read_proxy read_right() {
+    //(method 2)
     if (multi) return right->get_read_multi(*multi, auth);
+    //(methods 1 & 3)
     if (auth)  return right->get_read_auth(auth);
+    //(method 0)
     return right->get_read();
   }
 
