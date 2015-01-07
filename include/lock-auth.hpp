@@ -231,6 +231,46 @@ template <>
 class lock_auth <w_lock> : public lock_auth_w_lock {};
 
 
+/*! \class lock_auth_dumb_lock
+ *
+ * This auth. type only allows the caller to hold one lock at a time. Unlike
+ * lock_auth_w_lock, it doesn't matter if the container is in use. (One caveat
+ * to this is that r_lock doesn't actually lock; therefore, this auth. can
+ * potentially hold multiple locks on r_lock containers at one time.) This is
+ * useful if you want to ensure that the caller can only hold a single lock at
+ * any given time. This auth. type will not work with multi-locking.
+ */
+
+class lock_auth_dumb_lock : public lock_auth_base {
+public:
+  using lock_auth_base::count_type;
+  using lock_auth_base::order_type;
+
+  lock_auth_dumb_lock();
+
+  count_type writing_count() const;
+
+  ~lock_auth_dumb_lock();
+
+private:
+  lock_auth_dumb_lock(const lock_auth_dumb_lock&);
+  lock_auth_dumb_lock &operator = (const lock_auth_dumb_lock&);
+
+protected:
+  bool register_auth(bool read, bool lock_out, bool in_use, order_type order);
+  bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const;
+  void release_auth(bool read, order_type order);
+
+private:
+  bool writing;
+};
+
+class dumb_lock;
+
+template <>
+class lock_auth <dumb_lock> : public lock_auth_dumb_lock {};
+
+
 /*! \class lock_auth_ordered_lock
  *
  * This auth. type is the same as lock_auth <Type> (first template parameter),
@@ -329,45 +369,8 @@ class lock_auth <ordered_lock <r_lock> > : public lock_auth_ordered_lock <r_lock
 template <>
 class lock_auth <ordered_lock <w_lock> > : public lock_auth_ordered_lock <w_lock> {};
 
-
-/*! \class lock_auth_dumb_lock
- *
- * This auth. type only allows the caller to hold one lock at a time. Unlike
- * lock_auth_w_lock, it doesn't matter if the container is in use. (One caveat
- * to this is that r_lock doesn't actually lock; therefore, this auth. can
- * potentially hold multiple locks on r_lock containers at one time.) This is
- * useful if you want to ensure that the caller can only hold a single lock at
- * any given time. This auth. type will not work with multi-locking.
- */
-
-class lock_auth_dumb_lock : public lock_auth_base {
-public:
-  using lock_auth_base::count_type;
-  using lock_auth_base::order_type;
-
-  lock_auth_dumb_lock();
-
-  count_type writing_count() const;
-
-  ~lock_auth_dumb_lock();
-
-private:
-  lock_auth_dumb_lock(const lock_auth_dumb_lock&);
-  lock_auth_dumb_lock &operator = (const lock_auth_dumb_lock&);
-
-protected:
-  bool register_auth(bool read, bool lock_out, bool in_use, order_type order);
-  bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const;
-  void release_auth(bool read, order_type order);
-
-private:
-  bool writing;
-};
-
-class dumb_lock;
-
 template <>
-class lock_auth <dumb_lock> : public lock_auth_dumb_lock {};
+class lock_auth <ordered_lock <dumb_lock> > : public lock_auth_ordered_lock <dumb_lock> {};
 
 
 /*! \class lock_auth_broken_lock
