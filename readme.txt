@@ -123,7 +123,11 @@ proceed to use them like pointers. When they go out of scope, or when you call
   write.clear();
 
 ...the respective lock on 'my_int' will be released. That's all there is to it!
-(But, see the very end for Scoping Concerns.)
+(But, see the very end for Scoping Concerns.) Also, any of the "get" functions
+discussed in this document take an optional 'bool' argument that indicates
+blocking preference. Set this to 'false' if you don't want to block for a lock.
+Note that there might still be a slight block while waiting for access to the
+status information stored by the lock.
 
 
 ----- Lock Types -----
