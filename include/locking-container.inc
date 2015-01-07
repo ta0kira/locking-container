@@ -158,7 +158,7 @@ namespace lc {
   w_lock::count_type w_lock::lock(lock_auth_base *auth, bool /*read*/, bool block, bool test) {
     if (pthread_mutex_lock(&master_lock) != 0) return -1;
     //NOTE: 'false' is passed instead of 'read' because this can lock out other readers
-    if (!register_or_test_auth(auth, false, writer, writer, this->get_order(), test)) {
+    if (!register_or_test_auth(auth, false, writers_waiting, writer, this->get_order(), test)) {
       pthread_mutex_unlock(&master_lock);
       return -1;
     }
