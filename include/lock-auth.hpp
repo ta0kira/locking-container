@@ -369,8 +369,11 @@ class lock_auth <ordered_lock <r_lock> > : public lock_auth_ordered_lock <r_lock
 template <>
 class lock_auth <ordered_lock <w_lock> > : public lock_auth_ordered_lock <w_lock> {};
 
+//NOTE: 'w_lock' isn't a mistake! 'dumb_lock' would be useless, and this
+//specialization is provided so that 'ordered_lock <dumb_lock>' can't be locked
+//out of order
 template <>
-class lock_auth <ordered_lock <dumb_lock> > : public lock_auth_ordered_lock <dumb_lock> {};
+class lock_auth <ordered_lock <dumb_lock> > : public lock_auth_ordered_lock <w_lock> {};
 
 
 /*! \class lock_auth_broken_lock
