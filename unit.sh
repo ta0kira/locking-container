@@ -2,7 +2,7 @@
 
 comp='c++ -Wall -pedantic -std=c++11 unit.cpp -g -o unit -lpthread'
 prog='./unit'
-threads='2 4 8 16'
+threads='2 4 8 16 256'
 methods='0 1 2 3'
 locks='0 1 2'
 auths='0 1 2 3'
@@ -64,8 +64,8 @@ for t in $threads; do
     for l in $locks; do
       for a in $auths; do
         cmd="$prog $t $m $l $a"
-        [ "$m" -eq 0 ] && a=-1
-        label="threads: $t; lock method: ${method_names[m]}; lock type: ${lock_names[l]}; auth type: ${auth_names[a]}"
+        [ "$m" -eq 0 ] && a2=-1 || a2=$a
+        label="threads: $t; lock method: ${method_names[m]}; lock type: ${lock_names[l]}; auth type: ${auth_names[a2]}"
         echo "##### $label >>>>>"
         echo "// $cmd //"
         $cmd

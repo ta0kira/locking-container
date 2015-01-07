@@ -264,6 +264,7 @@ int main(int argc, char *argv[]) {
   shared_multi_lock multi((lock_method == 2)? new null_container : NULL);
   thread_set        all_threads(thread_count);
   pthread_barrier_t barrier;
+  struct timespec   start, finish;
 
   //initialization
 
@@ -280,11 +281,19 @@ int main(int argc, char *argv[]) {
 
   //program execution
 
+  clock_gettime(CLOCK_MONOTONIC, &start);
+
   //start the threads last
   start_threads(all_threads, all_philosophers, &barrier, timeout);
 
   //wait for results
   get_results(all_threads, all_chopsticks, &barrier);
+
+  clock_gettime(CLOCK_MONOTONIC, &finish);
+
+  fprintf(stdout, "time: %f\n",
+    (double) (finish.tv_sec  - start.tv_sec)  +
+    (double) (finish.tv_nsec - start.tv_nsec) / (double) (1000. * 1000. * 1000.));
 
   //cleanup
 
