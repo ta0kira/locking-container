@@ -220,8 +220,7 @@ static void get_results(thread_set &threads, chopstick_set &chops, pthread_barri
 
 int main(int argc, char *argv[]) {
   char error = 0;
-  unsigned int thread_count = 0;
-  int lock_method = 0, lock_type = 0, auth_type = 0, timeout = 5;
+  int thread_count = 0, lock_method = 0, lock_type = 0, auth_type = 0, timeout = 5;
 
   //argument parsing
 
@@ -315,7 +314,7 @@ static void deadlock_timeout(int sig) {
 
 
 static void init_chopsticks(int lock_method, int lock_type, chopstick_set &chops) {
-  for (int i = 0; i < chops.size(); i++) {
+  for (int i = 0; i < (signed) chops.size(); i++) {
     switch (lock_method) {
       case 0:
       case 1:
@@ -346,7 +345,7 @@ static void init_chopsticks(int lock_method, int lock_type, chopstick_set &chops
 static void init_philosophers(int lock_method, int auth_type, chopstick_set &chops,
   philosopher_set &phils,  pthread_barrier_t *barrier,
   shared_multi_lock multi) {
-  for (int i = 0; i < phils.size(); i++) {
+  for (int i = 0; i < (signed) phils.size(); i++) {
     lock_auth_base::auth_type new_auth;
     switch (lock_method) {
       case 0: break; //(no auth. used)
@@ -378,7 +377,7 @@ static void init_philosophers(int lock_method, int auth_type, chopstick_set &cho
 
 static void start_threads(thread_set &threads, philosopher_set &phils,
   pthread_barrier_t *barrier, int timeout) {
-  for (int i = 0; i < phils.size(); i++) {
+  for (int i = 0; i < (signed) phils.size(); i++) {
     if (pthread_create(&threads[i], NULL, (void*(*)(void*)) &philosopher_base::eat_dinner,
         (void*) static_cast <philosopher_base*> (phils[i].get())) != 0) {
       //TODO: error message
@@ -401,7 +400,7 @@ static void get_results(thread_set &threads, chopstick_set &chops, pthread_barri
   //TODO: error message
   if (result != 0 && result != PTHREAD_BARRIER_SERIAL_THREAD) exit(ERROR_SYSTEM);
 
-  for (int i = 0; i < threads.size(); i++) {
+  for (int i = 0; i < (signed) threads.size(); i++) {
     pthread_join(threads[i], NULL);
   }
 
