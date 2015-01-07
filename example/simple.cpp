@@ -96,7 +96,7 @@ int main() {
   //replaced with 'get_write_multi' and 'get_read_multi' so that 'multi_lock'
   //keeps track of all of the locks held on 'data0' and 'data1'. this is so that
   //'multi_lock' makes this call block until no other threads are accessing
-  //'data0' or 'data1'. (see test.cpp more a more elaborate example.)
+  //'data0' or 'data1'. (see ../test/unit.cpp more a more elaborate example.)
   lc::multi_lock multi;
   bool success2 = try_copy_container(data0, data1, multi, auth);
   assert(success2);
