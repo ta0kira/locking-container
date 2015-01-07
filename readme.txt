@@ -476,7 +476,7 @@ Above, the first argument to 'int_rw_ordered::int_rw_ordered' is the object
 initializer, and the second is the lock order, passed to the lock object. This
 must be > 0 for ordering to work. If the order is 0, the lock functions like the
 original lock type (e.g., 'lc::rw_lock'), except that ordered authorization
-objects still be used must. 'get_read' and 'get_write' will return 'NULL' for
+objects must still be used. 'get_read' and 'get_write' will return 'NULL' for
 ordered locks because the system only works if we can be sure that all threads
 abide by the ordering rules (via authorization objects).
 
@@ -538,8 +538,8 @@ Or:
     write = my_int.get_write_auth(auth);
   } //<-- danger! 'write' gets destructed after 'auth'!
 
-The following situations will cause an assertion, if you haven't disabled them.
-Either way, you must be aware that these situations are bad:
+The above situations will cause assertions, if you haven't disabled them. Either
+way, you must be aware that these situations are bad:
 
   - A lock destructs while it's still locked.
 
