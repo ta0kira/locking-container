@@ -87,6 +87,9 @@ struct chopstick {
 //philosophers, who must grab the left chopstick before the right
 
 struct philosopher_base {
+  //TODO: add a condition where a write lock is used for "right"; this will be
+  //necessary in order to test the lock-out exceptions used in 'rw_lock'
+
   virtual lc::multi_lock::write_proxy      lock_multi() = 0;
   virtual protected_chopstick::write_proxy write_left() = 0;
   virtual protected_chopstick::read_proxy  read_right() = 0;
