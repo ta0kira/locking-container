@@ -444,7 +444,7 @@ the multi-locking technique there are potential (but prevented!) deadlocks even
 when you're requesting multiple read locks, so your code should allow for
 retrying if a second read lock fails. On the other hand, if 'auth2' currently
 holds no other locks, the call above should block until the multi-lock operation
-completes and the write lock on 'master_lock' completes.
+completes and the write lock on 'master_lock' is released.
 
 For the multi-locking thread, it is very important for it to release the write
 lock as soon as it obtains all of the locks it needs, i.e., before operating on
@@ -471,10 +471,10 @@ always be used when obtaining locks.
 Above, the first argument to 'int_rw_ordered::int_rw_ordered' is the object
 initializer, and the second is the lock order, passed to the lock object. This
 must be > 0 for ordering to work. If the order is 0, the lock functions like the
-original lock type ('lc::rw_lock'), except that ordered authorization objects
-still be used must. 'get_read' and 'get_write' will return 'NULL' for ordered
-locks because the system only works if we can be sure that all threads abide by
-the ordering rules (via authorization objects).
+original lock type (e.g., 'lc::rw_lock'), except that ordered authorization
+objects still be used must. 'get_read' and 'get_write' will return 'NULL' for
+ordered locks because the system only works if we can be sure that all threads
+abide by the ordering rules (via authorization objects).
 
 If we know that we're locking containers in order, all we have to do is use
 the usual authorization method:
