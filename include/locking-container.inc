@@ -149,7 +149,6 @@ namespace lc {
   }
 
 
-
   w_lock::w_lock() : writer(false), writers_waiting(0) {
     pthread_mutex_init(&master_lock, NULL);
     pthread_cond_init(&write_wait, NULL);

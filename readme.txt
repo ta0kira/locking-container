@@ -400,7 +400,7 @@ thread requests a lock on the master lock. (TODO: Add some more detail regarding
 this solution!)
 
 
------ Solution 3 -----
+,,,,, Solution 3 ,,,,,
 
 This is the most computationally efficient solution, but it's also the most
 demanding of the programmer. This solution requires that the lock types used be
