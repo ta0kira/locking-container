@@ -53,6 +53,9 @@ maintained, and that ordering must be respected by all threads.
 See simple.cpp for example usage in a single thread. test.cpp contains examples
 with multiple threads, to include multiple write locks with deadlock prevention.
 
+For an even more elaborate example, see unit.cpp. This contains a unit test of
+deadlock prevention, which is automatically run by unit.sh.
+
 This software is released under the BSD License. See the individual header files
 for more information.
 

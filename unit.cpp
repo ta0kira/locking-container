@@ -108,16 +108,19 @@ struct philosopher_base {
       //value isn't important, because the proxy holds the lock if it's needed
       null_container::write_proxy multi = self->lock_multi();
 
-      //NOTE: this should never fail
+      //NOTE: this should only fail if there's an incompatibility between the
+      //lock type, locking method, or auth. type, but that should be prevented
+      //during argument parsing
       protected_chopstick::write_proxy left = self->write_left();
       if (!left) exit(ERROR_LOGIC);
 
       //(increase the chances of a potential deadlock)
       self->timed_wait();
 
-      //NOTE: this should never fail
+      //NOTE: this will fail if a potential deadlock is detected
       protected_chopstick::read_proxy right = self->read_right();
       if (!right) {
+        //NOTE: if you 'timed_wait' here, 'left' remains locked during the wait!
         continue;
       } else {
         //(if 'right' was already used, pass on its number)
