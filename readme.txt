@@ -497,13 +497,13 @@ If either of the above operations fail, it's almost certainly because we forgot
 about another lock of higher order that 'auth' currently holds. Hence, this is
 an actual failure, and we don't loop to retry the lock requests.
 
-In certain cases, you might need to lock two containers out of order. Luckily,
-an exception to the order restriction is made if the container to be locked
-isn't currently locked by any other thread. In this case, the solution is
-exactly the same as Solution 1: Try both locks, and if it fails, release both of
-them, take a nap, and try again. (Remember that 'lc::dumb_lock' can't detect if
-it's locked or not, so an 'lc::ordered_lock <lc::dumb_lock>' can never be locked
-out of order! That could be good, or it could be bad. It's up to you.)
+In certain cases, you might need to lock two containers out of order. If a lock
+is attempted out of order, the normal locking rules apply. In this case, the
+solution is exactly the same as Solution 1: Try both locks, and if it fails,
+release both of them, take a nap, and try again. (A special case is with
+'lc::dumb_lock', which can't detect if it's locked or not. This means that
+an 'lc::ordered_lock <lc::dumb_lock>' can  never be locked out of order! That
+could be good, or it could be bad. It's up to you.)
 
 Authorization objects corresponding to ordered locks behave similarly to their
 unordered counterparts, except they are more liberal about allowing locks when

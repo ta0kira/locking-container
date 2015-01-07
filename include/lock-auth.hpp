@@ -339,10 +339,10 @@ protected:
   }
 
   bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const {
-    bool normal_rules = !order || unordered_locks;
-    //disallow a lock only if it's ordered, that order isn't strictly greater,
-    //and the container is currently in use
-    if (order && in_use && ordered_locks.size() && *ordered_locks.rbegin() >= order) return false;
+    //use the normal rules if an unordered lock "taints" this auth., or if this
+    //particular operation is out of order
+    bool normal_rules = !order || unordered_locks ||
+      (ordered_locks.size() && *ordered_locks.rbegin() >= order);
     //(if order rules are respected, 'lock_out' and 'in_use' aren't needed)
     return this->base::test_auth(read, normal_rules && lock_out,
       normal_rules && in_use, order);
