@@ -167,6 +167,14 @@ is exactly the same. What differs between them is under what circumstances the
 access request succeeds, fails, or blocks. They differ even more when deadlock
 prevention is used, discussed below.
 
+Multi-read locks (e.g., 'lc::rw_lock' and 'lc::r_lock') should never be used to
+protect objects that aren't thread-safe when 'const'. This is because those
+locks allow multiple threads to call 'const' functions on the objects; if they
+aren't thread-safe when 'const', this could cause data corruption. Examples of
+types that should not be protected with multi-read locks are: pointers; objects
+whose 'const' functions call non-reentrant global functions; objects with
+mutable members.
+
 
 ----- Deadlock Prevention -----
 
@@ -225,6 +233,10 @@ containers that it has locked. That would be helpful, but to be useful we would
 also need to implement more sophisticated deadlock-detection algorithms, which
 could make the whole system less efficient. (You might be able to create an
 authorization class that does, this however! I just haven't done so.)
+
+Authorization objects are not thread-safe; therefore, a single authorization
+object should only be used with one thread. In other words, each authorization
+object is intended to be "owned" by a particular thread.
 
 
 ----- Authorization Types -----
@@ -310,7 +322,10 @@ drawbacks:
      you generally don't have to loop while waiting for multiple locks. The
      disadvantage is that every other thread must stop briefly while the multi-
      locking thread selects what it wants to lock, but everything can proceed
-     again once those locks are selected.
+     again once those locks are selected. This method is appropriate when there
+     is no reasonable way to order objects (e.g., in a graph), or when all of
+     the necessary locks can be obtained prior to performing operations on the
+     respective objects.
 
   3) Use ordered locks, where each container has a numerical order that
      determines what containers can be locked after it. If a thread has a lock
