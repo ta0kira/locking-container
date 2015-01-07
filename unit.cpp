@@ -50,6 +50,7 @@
 
 #include "locking-container.hpp"
 
+#define SUCCESS        0
 #define ERROR_ARGS     1
 #define ERROR_THREAD   2
 #define ERROR_DEADLOCK 3
@@ -287,7 +288,7 @@ int main(int argc, char *argv[]) {
 
   pthread_barrier_destroy(&barrier);
 
-  return 0;
+  return SUCCESS;
 }
 
 

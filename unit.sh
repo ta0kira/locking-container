@@ -25,6 +25,15 @@ auth_names=(
   'w_lock'
 )
 
+exit_names=(
+  'SUCCESS'
+  'ERROR_ARGS'
+  'ERROR_THREAD'
+  'ERROR_DEADLOCK'
+  'ERROR_LOGIC'
+  'ERROR_SYSTEM'
+)
+
 expected_result() {
   local m=$1
   local l=$2
@@ -51,8 +60,10 @@ for t in $threads; do
         echo "// $cmd //"
         $cmd
         result=$?
+        [ "${exit_names[$result]}" ] && result="${exit_names[$result]}"
         expected_result "$m" "$l" "$a"
         expected=$?
+        [ "${exit_names[$expected]}" ] && expected="${exit_names[$expected]}"
         echo "[exit: $result; expected: $expected]"
         echo "<<<<< $label #####"
       done
