@@ -25,6 +25,7 @@ auth_names=(
   'w_lock'
   'ordered_lock <rw_lock>'
   'ordered_lock <w_lock>'
+  '(none)'
 )
 
 exit_names=(
@@ -48,7 +49,7 @@ expected_result() {
   [ "$l" -eq 2 ] && [ "$m" -gt 0 ] && return 1
   #ordered locks without ordered auth.
   [ "$m" -eq 3 ] && [ "$a" -lt 2 ] && return 1
-  #unsage locking
+  #unsafe locking
   [ "$m" -eq 0 ] && return 3
   return 0
 }
@@ -63,6 +64,7 @@ for t in $threads; do
     for l in $locks; do
       for a in $auths; do
         cmd="$prog $t $m $l $a"
+        [ "$m" -eq 0 ] && a=-1
         label="threads: $t; lock method: ${method_names[m]}; lock type: ${lock_names[l]}; auth type: ${auth_names[a]}"
         echo "##### $label >>>>>"
         echo "// $cmd //"

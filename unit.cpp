@@ -31,7 +31,7 @@
  +~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 /* This is a unit test of deadlock prevention. This is based on the Dining
- * Philosopher's Problem (http://en.wikipedia.org/wiki/Dining_philosophers_
+ * Philosophers Problem (http://en.wikipedia.org/wiki/Dining_philosophers_
  * problem). This obviously needs to be documented better.
  */
 
