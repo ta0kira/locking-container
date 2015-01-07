@@ -1,5 +1,5 @@
 /* This is a very simple example of the semantics of 'locking_container'. For a
- * non-trivial example, see test.cpp.
+ * non-trivial example, see ../test/unit.cpp.
  *
  * Compile this program enabling C++11, and linking with libpthread if needed.
  * When you run this program, you should see no output or errors. An assertion
