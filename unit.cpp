@@ -227,7 +227,7 @@ static void get_results(thread_set &threads, chopstick_set &chops, pthread_barri
 
 int main(int argc, char *argv[]) {
   char error = 0;
-  int thread_count = 0, lock_method = 0, lock_type = 0, auth_type = 0, timeout = 2;
+  int thread_count = 0, lock_method = 0, lock_type = 0, auth_type = 0, timeout = 5;
 
   //argument parsing
 
@@ -323,7 +323,7 @@ static int print_help(const char *name, const char *message) {
   fprintf(stderr, "  1: w_lock\n");
   fprintf(stderr, "  2: ordered_lock <rw_lock>\n");
   fprintf(stderr, "  3: ordered_lock <w_lock>\n");
-  fprintf(stderr, "(timeout): time (in seconds) to wait for deadlock (default: 2s)\n");
+  fprintf(stderr, "(timeout): time (in seconds) to wait for deadlock (default: 5s)\n");
   return ERROR_ARGS;
 }
 
