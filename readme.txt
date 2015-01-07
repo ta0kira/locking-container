@@ -296,10 +296,11 @@ drawbacks:
      multiple write locks, etc. When no thread needs multiple write locks, this
      functions the same as above. When a thread wants multiple write locks, it
      waits for a lock on the master lock, which is only granted after all other
-     threads release all of their locks. This is reliable, and it's simple to
-     implement, but it can be extremely inefficient. It is most appropriate when
-     you have very few locking containers and it'll fairly rare for a thread to
-     require multiple write locks.
+     threads release all of their locks. The advantage of this method is that
+     you generally don't have to loop while waiting for multiple locks. The
+     disadvantage is that every other thread must stop briefly while the multi-
+     locking thread selects what it wants to lock, but everything can proceed
+     again once those locks are selected.
 
   3) Use ordered locks, where each container has a numerical order that
      determines what containers can be locked after it. If a thread has a lock
@@ -396,8 +397,53 @@ that all other lock operations use 'get_read_multi' and 'get_write_multi' with
 the same 'lc::multi_lock' object! Even for operations that don't require
 multiple write locks, or a write lock with one or more read locks. The entire
 purpose of the master lock is to ensure that all other locks are released when a
-thread requests a lock on the master lock. (TODO: Add some more detail regarding
-this solution!)
+thread requests a lock on the master lock.
+
+Here is a more detailed explanation of how it works. For normal read and write
+operations, we simply use:
+
+  int_base::write_proxy write0 = my_int0.get_write_multi(master_lock, auth);
+
+  //...
+
+  int_base::read_proxy read0 = my_int0.get_read_multi(master_lock, auth);
+
+Every time this sort of lock is made, a read lock is taken out on 'master_lock'.
+Since 'lc::multi_lock' contains a 'lc::rw_lock', 'master_lock' can handle and
+unlimited number of read locks at once. Now, suppose a thread wants a multi-
+lock, which is obtained using a write lock on 'master_lock':
+
+  lc::multi_lock::write_proxy multi = master_lock.get_write_auth(auth);
+
+Here we are requesting a write lock on a object with a 'lc::rw_lock'. When this
+happens, the call blocks until there are no readers, and new read operations are
+blocked out until the write lock is granted and returned. Importantly, 'auth'
+must have no locks at the time the write lock on 'master_lock' is requested!
+This is because it would almost certainly cause a deadlock. Suppose another
+thread requests a new lock while this thread is waiting for a write lock on
+'master_lock':
+
+  int_base::read_proxy read1 = my_int1.get_read_multi(master_lock, auth2);
+
+Here, a read lock is requested for 'master_lock', since that's how the whole
+multi-locking thing works. What happens here depends on what else 'auth2' is
+associated with at the time. If 'auth2' has other locks, then this call should
+fail, because it's very possible that the other lock held by 'auth2' is what's
+causing the write lock on 'master_lock' to block. In that case, we need to go
+back to Solution 1 (for situations where multiple read locks would otherwise
+work) by clearing all locks held, waiting, and retrying. In other words, with
+the multi-locking technique there are potential (but prevented!) deadlocks even
+when you're requesting multiple read locks, so your code should allow for
+retrying if a second read lock fails. On the other hand, if 'auth2' currently
+holds no other locks, the call above should block until the multi-lock operation
+completes and the write lock on 'master_lock' completes.
+
+For the multi-locking thread, it is very important for it to release the write
+lock as soon as it obtains all of the locks it needs, i.e., before operating on
+the objects that it's obtained locks for. This is so that other threads can
+proceed to access the containers that the multi-locking thread hasn't locked,
+and so they can access the locked containers immediately when they become free
+again.
 
 
 ,,,,, Solution 3 ,,,,,

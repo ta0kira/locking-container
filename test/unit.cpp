@@ -113,6 +113,7 @@ struct philosopher_base {
       //value isn't important, because a 'NULL' should mean that we're not
       //using multilocking
       lc::multi_lock::write_proxy multi = self->lock_multi();
+      bool using_multi = multi;
 
       //NOTE: this should only fail if there's an incompatibility between the
       //lock type, locking method, or auth. type, but that should be prevented
@@ -121,11 +122,11 @@ struct philosopher_base {
       if (!left) exit(ERROR_LOGIC);
 
       //(increase the chances of a potential deadlock)
-      self->timed_wait();
+      //NOTE: if we're multilocking, this is pointless; we can't cause a deadlock
+      if (!using_multi) self->timed_wait();
 
       //NOTE: this will fail if a potential deadlock is detected
       protected_chopstick::read_proxy right = self->read_right();
-      bool using_multi = multi;
       multi.clear(); //(clear the multi-lock as soon as possible)
       if (!right) {
         //(if method 2 is used, the above lock should never fail)
@@ -234,7 +235,7 @@ static void get_results(thread_set &threads, chopstick_set &chops, pthread_barri
 
 int main(int argc, char *argv[]) {
   char error = 0;
-  int thread_count = 0, lock_method = 0, lock_type = 0, auth_type = 0, timeout = 5;
+  int thread_count = 0, lock_method = 0, lock_type = 0, auth_type = 0, timeout = 1;
 
   //argument parsing
 
@@ -330,7 +331,7 @@ static int print_help(const char *name, const char *message) {
   fprintf(stderr, "  1: w_lock\n");
   fprintf(stderr, "  2: ordered_lock <rw_lock>\n");
   fprintf(stderr, "  3: ordered_lock <w_lock>\n");
-  fprintf(stderr, "(timeout): time (in seconds) to wait for deadlock (default: 5s)\n");
+  fprintf(stderr, "(timeout): time (in seconds) to wait for deadlock (default: 1s)\n");
   return ERROR_ARGS;
 }
 
