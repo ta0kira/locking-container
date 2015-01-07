@@ -5,7 +5,7 @@ prog='./unit'
 threads='2 4 8 16'
 methods='0 1 2 3'
 locks='0 1 2'
-auths='0 1'
+auths='0 1 2 3'
 
 method_names=(
   'unsafe'
@@ -23,6 +23,8 @@ lock_names=(
 auth_names=(
   'rw_lock'
   'w_lock'
+  'ordered_lock <rw_lock>'
+  'ordered_lock <w_lock>'
 )
 
 exit_names=(
@@ -38,9 +40,15 @@ expected_result() {
   local m=$1
   local l=$2
   local a=$3
-  { [ "$m" ] && [ "$l" ] && [ "$a" ]; } || return 99
+  #empty argument(s)
+  { [ "$m" ] && [ "$l" ] && [ "$a" ]; } || return 1
+  #unsafe locking with auth. type
   [ "$m" -eq 0 ] && [ "$a" -gt 0 ] && return 1
+  #dumb_lock with non-unsafe locking
   [ "$l" -eq 2 ] && [ "$m" -gt 0 ] && return 1
+  #ordered locks without ordered auth.
+  [ "$m" -eq 3 ] && [ "$a" -lt 2 ] && return 1
+  #unsage locking
   [ "$m" -eq 0 ] && return 3
   return 0
 }

@@ -243,7 +243,7 @@ int main(int argc, char *argv[]) {
   if (sscanf(argv[3], "%i%c", &lock_type, &error) != 1 || lock_type < 0 || lock_type > 3)
     return print_help(argv[0], "invalid lock type");
 
-  if (sscanf(argv[4], "%i%c", &auth_type, &error) != 1 || auth_type < 0 || auth_type > 2)
+  if (sscanf(argv[4], "%i%c", &auth_type, &error) != 1 || auth_type < 0 || auth_type > 4)
     return print_help(argv[0], "invalid auth type");
 
   if (argc > 5 && (sscanf(argv[5], "%i%c", &timeout, &error) != 1 || timeout < 1))
@@ -254,6 +254,9 @@ int main(int argc, char *argv[]) {
 
   if (lock_method == 0 && auth_type != 0)
     return print_help(argv[0], "auth type must be 0 with unsafe locking");
+
+  if (lock_method == 3 && auth_type < 2)
+    return print_help(argv[0], "auth type must be >= 2 with ordered locks");
 
   //program data
 
@@ -310,6 +313,8 @@ static int print_help(const char *name, const char *message) {
   fprintf(stderr, "[auth type]: type of authorization objects to use\n");
   fprintf(stderr, "  0: rw_lock\n");
   fprintf(stderr, "  1: w_lock\n");
+  fprintf(stderr, "  2: ordered_lock <rw_lock>\n");
+  fprintf(stderr, "  3: ordered_lock <w_lock>\n");
   fprintf(stderr, "(timeout): time (in seconds) to wait for deadlock (default: 5s)\n");
   return ERROR_ARGS;
 }
@@ -362,19 +367,23 @@ static void init_philosophers(int lock_method, int auth_type, chopstick_set &cho
         switch (auth_type) {
           case 0: new_auth.reset(new lock_auth <rw_lock>); break;
           case 1: new_auth.reset(new lock_auth <w_lock>);  break;
+          case 2: new_auth.reset(new lock_auth <ordered_lock <rw_lock> >); break;
+          case 3: new_auth.reset(new lock_auth <ordered_lock <w_lock> >);  break;
           default: exit(ERROR_ARGS); break;
         }
         break;
       case 3:
         switch (auth_type) {
-          case 0: new_auth.reset(new lock_auth <ordered_lock <rw_lock> >); break;
-          case 1: new_auth.reset(new lock_auth <ordered_lock <w_lock> >);  break;
+          case 0:
+          case 1: exit(ERROR_ARGS); break;
+          case 2: new_auth.reset(new lock_auth <ordered_lock <rw_lock> >); break;
+          case 3: new_auth.reset(new lock_auth <ordered_lock <w_lock> >);  break;
           default: exit(ERROR_ARGS); break;
         }
         break;
       default: exit(ERROR_ARGS); break;
     }
-    if (lock_method && !new_auth) exit(ERROR_LOGIC);
+    if ((bool) lock_method ^ (bool) new_auth.get()) exit(ERROR_LOGIC);
     phils[i].reset(new
       philosopher(i, chops[i % chops.size()], chops[(i + 1) % chops.size()],
         barrier, new_auth, multi));
