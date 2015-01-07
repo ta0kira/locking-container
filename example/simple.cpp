@@ -6,21 +6,23 @@
  * means a bug in the code.
  *
  * Suggested compilation command:
- *   c++ -Wall -pedantic -std=c++11 simple.cpp -o simple -lpthread
+ *   c++ -Wall -pedantic -std=c++11 -I../include simple.cpp -o simple -lpthread
  */
 
 #include <stdio.h>
 #include <assert.h>
 
 #include "locking-container.hpp"
+//(necessary for non-template source)
+#include "locking-container.inc"
 
 
 int main() {
   //default: use 'rw_lock'
-  typedef locking_container <int> protected_int0;
+  typedef lc::locking_container <int> protected_int0;
 
   //use 'w_lock' instead
-  typedef locking_container <int, w_lock> protected_int1;
+  typedef lc::locking_container <int, lc::w_lock> protected_int1;
 
   //the two types above share the same base class because they both protect 'int'
   typedef protected_int0::base base;
@@ -31,12 +33,12 @@ int main() {
 
   //authorization object to prevent deadlocks (one per thread)
   //NOTE: this will correspond to 'rw_lock', since that's what 'protected_int0' uses
-  lock_auth_base::auth_type auth(protected_int0::new_auth());
+  lc::lock_auth_base::auth_type auth(protected_int0::new_auth());
   //make sure an authorization was provided
   assert(auth);
 
   //alternatively, you can explicitly specify an authorization type
-  lock_auth_base::auth_type auth2(new lock_auth <r_lock>);
+  lc::lock_auth_base::auth_type auth2(new lc::lock_auth <lc::r_lock>);
 
   //proxy objects for accessing the protected data (use them like pointers)
   base::write_proxy write;
@@ -95,12 +97,12 @@ int main() {
   //keeps track of all of the locks held on 'data0' and 'data1'. this is so that
   //'multi_lock' makes this call block until no other threads are accessing
   //'data0' or 'data1'. (see test.cpp more a more elaborate example.)
-  null_container multi_lock;
-  bool success2 = try_copy_container(data0, data1, multi_lock, auth);
+  lc::multi_lock multi;
+  bool success2 = try_copy_container(data0, data1, multi, auth);
   assert(success2);
 
   //or, if this thread already holds a write lock on 'multi_lock'...
-  null_container_base::write_proxy multi = multi_lock.get_write_auth(auth);
-  bool success3 = try_copy_container(data0, data1, multi_lock, auth, true, false);
+  lc::multi_lock::write_proxy multi_write = multi.get_write_auth(auth);
+  bool success3 = try_copy_container(data0, data1, multi, auth, true, false);
   assert(success3);
 }
