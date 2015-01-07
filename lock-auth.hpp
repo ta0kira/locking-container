@@ -82,7 +82,7 @@ protected:
   virtual void release_auth(bool read, order_type order) = 0;
 
   /*! Allow locking of a lock with a particular order.*/
-  virtual bool order_allowed(order_type order, bool /*in_use*/) const {
+  virtual bool order_allowed(order_type order) const {
     //by default, disallow using auth. objects with ordered locks
     return !order;
   }
@@ -152,7 +152,7 @@ protected:
   }
 
   bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const {
-    if (!this->order_allowed(order, in_use)) return false;
+    if (!this->order_allowed(order)) return false;
     if (writing && in_use)                return false;
     if (reading && !read && in_use)       return false;
     if ((reading || writing) && lock_out) return false;
@@ -219,8 +219,8 @@ protected:
     return true;
   }
 
-  bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const {
-    if (!this->order_allowed(order, in_use)) return false;
+  bool test_auth(bool read, bool lock_out, bool /*in_use*/, order_type order) const {
+    if (!this->order_allowed(order)) return false;
     if (!read)               return false;
     if (reading && lock_out) return false;
     return true;
@@ -281,7 +281,7 @@ protected:
   }
 
   bool test_auth(bool /*read*/, bool /*lock_out*/, bool in_use, order_type order) const {
-    if (!this->order_allowed(order, in_use)) return false;
+    if (!this->order_allowed(order)) return false;
     return !writing || !in_use;
   }
 
@@ -335,9 +335,8 @@ private:
 protected:
   typedef std::set <order_type> order_set;
 
-  bool order_allowed(order_type order, bool in_use) const {
-    //disallow a lock only if it's ordered and that order isn't strictly greater
-    return !in_use || !order || !ordered_locks.size() || *ordered_locks.rbegin() < order;
+  bool order_allowed(order_type order) const {
+    return true;
   }
 
   virtual void register_order(order_type order) {
@@ -370,9 +369,9 @@ protected:
 
   bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const {
     bool normal_rules = !order || unordered_locks;
-    //NOTE: a second check is required to make sure ordering is respected, since
-    //'in_use' isn't passed on to 'base::test_auth'
-    if (!normal_rules && !this->order_allowed(order, in_use)) return false;
+    //disallow a lock only if it's ordered, that order isn't strictly greater,
+    //and the container is currently in use
+    if (order && in_use && ordered_locks.size() && *ordered_locks.rbegin() >= order) return false;
     //(if order rules are respected, 'lock_out' and 'in_use' aren't needed)
     return this->base::test_auth(read, normal_rules && lock_out,
       normal_rules && in_use, order);
@@ -436,8 +435,8 @@ protected:
     return true;
   }
 
-  bool test_auth(bool /*read*/, bool /*lock_out*/, bool in_use, order_type order) const {
-    if (!this->order_allowed(order, in_use)) return false;
+  bool test_auth(bool /*read*/, bool /*lock_out*/, bool /*in_use*/, order_type order) const {
+    if (!this->order_allowed(order)) return false;
     return !writing;
   }
 

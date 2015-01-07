@@ -107,8 +107,8 @@ public:
     if (pthread_mutex_lock(&master_lock) != 0) return -1;
     bool writer_reads = auth && the_writer == auth && read;
     //make sure this is an authorized lock type for the caller
-    if (!register_or_test_auth(auth, read, writer_reads? false : writer_waiting,
-                               writer_reads? false : (writer || readers), this->get_order(), test)) {
+    if (!register_or_test_auth(auth, read, !writer_reads && writer_waiting,
+                               !writer_reads && (writer || readers), this->get_order(), test)) {
       pthread_mutex_unlock(&master_lock);
       return -1;
     }
