@@ -119,6 +119,7 @@ struct philosopher_base {
 
       //NOTE: this will fail if a potential deadlock is detected
       protected_chopstick::read_proxy right = self->read_right();
+      multi.clear(); //(clear the multi-lock as soon as possible)
       if (!right) {
         //NOTE: if you 'timed_wait' here, 'left' remains locked during the wait!
         continue;
