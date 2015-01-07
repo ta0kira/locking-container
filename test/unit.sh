@@ -84,7 +84,12 @@ for t in $threads; do
               expected_result "$m" "$d" "$l" "$a"
               expected=$?
               [ "${exit_names[$expected]}" ] && expected="${exit_names[$expected]}"
-              echo "[exit: $result; expected: $expected]"
+              if [ "$result" = "${exit_names[0]}" ] || [ "$result" = "$expected" ]; then
+                pass='PASSED'
+              else
+                pass='FAILED'
+              fi
+              echo "$pass [exit: $result; expected: $expected]"
               echo "<<<<< $label #####"
           done
       done
