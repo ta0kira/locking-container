@@ -95,8 +95,8 @@ struct philosopher_base {
   virtual int get_left_order()  const = 0;
   virtual int get_right_order() const = 0;
 
-  virtual bool barrier_wait()               = 0;
-  virtual void timed_wait(unsigned int = 1) = 0;
+  virtual bool barrier_wait()                   = 0;
+  virtual void timed_wait(bool optional = true) = 0;
 
   virtual inline ~philosopher_base() {}
 
@@ -122,8 +122,9 @@ struct philosopher_base {
       if (!left) exit(ERROR_LOGIC);
 
       //(increase the chances of a potential deadlock)
-      //NOTE: if we're multilocking, this is pointless; we can't cause a deadlock
-      if (!using_multi) self->timed_wait();
+      //NOTE: 'true' allows the object to skip the wait (this is the difference
+      //between the two try-to-deadlock command-line options)
+      self->timed_wait(true);
 
       //NOTE: this will fail if a potential deadlock is detected
       protected_chopstick::read_proxy right = self->read_right();
@@ -155,8 +156,8 @@ class philosopher : public philosopher_base {
 public:
   philosopher(int n, chopstick_pointer l, chopstick_pointer r, pthread_barrier_t *b,
     lc::lock_auth_base::auth_type a = lc::lock_auth_base::auth_type(),
-    shared_multi_lock m = shared_multi_lock()) :
-    number(n), barrier(b), auth(a), multi(m), left(l), right(r) {
+    shared_multi_lock m = shared_multi_lock(), bool d = true) :
+    number(n), deadlock(d), barrier(b), auth(a), multi(m), left(l), right(r) {
     assert(left.get() && right.get());
   }
 
@@ -200,13 +201,15 @@ public:
     return result == 0 || result == PTHREAD_BARRIER_SERIAL_THREAD;
   }
 
-  void timed_wait(unsigned int t) {
-    struct timespec wait = { 0, t * 10 * 1000 * 1000 };
+  void timed_wait(bool optional) {
+    if (optional && !deadlock) return;
+    struct timespec wait = { 0, 10 * 1000 * 1000 };
     nanosleep(&wait, NULL);
   }
 
 protected:
   const int                     number;
+  bool                          deadlock;
   pthread_barrier_t            *barrier;
   lc::lock_auth_base::auth_type auth;
   shared_multi_lock             multi;
@@ -223,7 +226,8 @@ static void deadlock_timeout(int sig);
 static void init_chopsticks(int lock_method, int lock_type, chopstick_set &chops);
 
 static void init_philosophers(int lock_method, int auth_type, chopstick_set &chops,
-  philosopher_set &phils, pthread_barrier_t *barrier, shared_multi_lock multi);
+  philosopher_set &phils, pthread_barrier_t *barrier, shared_multi_lock multi,
+  bool deadlock);
 
 static void start_threads(thread_set &threads, philosopher_set &phils,
   pthread_barrier_t *barrier, int timeout);
@@ -235,11 +239,11 @@ static void get_results(thread_set &threads, chopstick_set &chops, pthread_barri
 
 int main(int argc, char *argv[]) {
   char error = 0;
-  int thread_count = 0, lock_method = 0, lock_type = 0, auth_type = 0, timeout = 1;
+  int thread_count = 0, lock_method = 0, try_deadlock = 1, lock_type = 0, auth_type = 0, timeout = 1;
 
   //argument parsing
 
-  if (argc != 5 && argc != 6) return print_help(argv[0]);
+  if (argc != 6 && argc != 7) return print_help(argv[0]);
 
   if (sscanf(argv[1], "%i%c", &thread_count, &error) != 1 || thread_count < 2 || thread_count > 256)
     return print_help(argv[0], "invalid number of threads");
@@ -247,13 +251,16 @@ int main(int argc, char *argv[]) {
   if (sscanf(argv[2], "%i%c", &lock_method, &error) != 1 || lock_method < 0 || lock_method > 4)
     return print_help(argv[0], "invalid lock method");
 
-  if (sscanf(argv[3], "%i%c", &lock_type, &error) != 1 || lock_type < 0 || lock_type > 3)
+  if (sscanf(argv[3], "%i%c", &try_deadlock, &error) != 1 || try_deadlock < 0 || try_deadlock > 1)
+    return print_help(argv[0], "invalid deadlock value");
+
+  if (sscanf(argv[4], "%i%c", &lock_type, &error) != 1 || lock_type < 0 || lock_type > 3)
     return print_help(argv[0], "invalid lock type");
 
-  if (sscanf(argv[4], "%i%c", &auth_type, &error) != 1 || auth_type < 0 || auth_type > 4)
+  if (sscanf(argv[5], "%i%c", &auth_type, &error) != 1 || auth_type < 0 || auth_type > 4)
     return print_help(argv[0], "invalid auth type");
 
-  if (argc > 5 && (sscanf(argv[5], "%i%c", &timeout, &error) != 1 || timeout < 1))
+  if (argc > 6 && (sscanf(argv[6], "%i%c", &timeout, &error) != 1 || timeout < 1))
     return print_help(argv[0], "invalid timeout value");
 
   if (lock_type == 2 && lock_method != 0)
@@ -264,6 +271,9 @@ int main(int argc, char *argv[]) {
 
   if (lock_method == 3 && auth_type < 2)
     return print_help(argv[0], "auth type must be >= 2 with ordered locks");
+
+  if (lock_method == 2 && try_deadlock)
+    return print_help(argv[0], "cannot cause a deadlock with multi-locking");
 
   //program data
 
@@ -285,7 +295,8 @@ int main(int argc, char *argv[]) {
   init_chopsticks(lock_method, lock_type, all_chopsticks);
 
   //initialize philosophers second
-  init_philosophers(lock_method, auth_type, all_chopsticks, all_philosophers, &barrier, multi);
+  init_philosophers(lock_method, auth_type, all_chopsticks, all_philosophers,
+    &barrier, multi, try_deadlock);
 
   //program execution
 
@@ -315,13 +326,16 @@ int main(int argc, char *argv[]) {
 
 static int print_help(const char *name, const char *message) {
   if (message) fprintf(stderr, "%s: %s\n", name, message);
-  fprintf(stderr, "%s [threads] [lock method] [lock type] [auth type] (timeout)\n", name);
+  fprintf(stderr, "%s [threads] [lock method] [deadlock?] [lock type] [auth type] (timeout)\n", name);
   fprintf(stderr, "[threads]: number of threads to run (2-256)\n");
   fprintf(stderr, "[lock method]: container locking method to use\n");
   fprintf(stderr, "  0: unsafe (no deadlock prevention)\n");
   fprintf(stderr, "  1: authorization only\n");
   fprintf(stderr, "  2: multi-locking\n");
   fprintf(stderr, "  3: ordered locking\n");
+  fprintf(stderr, "[deadlock?]: attempt to cause a deadlock?\n");
+  fprintf(stderr, "  0: no\n");
+  fprintf(stderr, "  1: yes\n");
   fprintf(stderr, "[lock type]: type of container locks to use\n");
   fprintf(stderr, "  0: rw_lock\n");
   fprintf(stderr, "  1: w_lock\n");
@@ -373,7 +387,8 @@ static void init_chopsticks(int lock_method, int lock_type, chopstick_set &chops
 
 
 static void init_philosophers(int lock_method, int auth_type, chopstick_set &chops,
-  philosopher_set &phils,  pthread_barrier_t *barrier, shared_multi_lock multi) {
+  philosopher_set &phils,  pthread_barrier_t *barrier, shared_multi_lock multi,
+  bool deadlock) {
   for (int i = 0; i < (signed) phils.size(); i++) {
     lc::lock_auth_base::auth_type new_auth;
     switch (lock_method) {
@@ -402,7 +417,7 @@ static void init_philosophers(int lock_method, int auth_type, chopstick_set &cho
     if ((bool) lock_method ^ (bool) new_auth.get()) exit(ERROR_LOGIC);
     phils[i].reset(new
       philosopher(i, chops[i % chops.size()], chops[(i + 1) % chops.size()],
-        barrier, new_auth, multi));
+        barrier, new_auth, multi, deadlock));
     if (!phils[i]) exit(ERROR_SYSTEM);
   }
 }
