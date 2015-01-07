@@ -53,7 +53,7 @@ access to the lock. If it's decided that there will be no blocking, we simply
 unlock the mutex and return an error. If there will be blocking, however, we can
 block on a condition variable. This will implicitly unlock the mutex (allowing
 other callers to check/update the lock's state), and lock it again once the
-condition has been released. In both cases, the mutex protecting the locks's
+condition has been released. In both cases, the mutex protecting the lock's
 state information stays locked for a comparatively short period of time. Sparing
 you the details, this allows us to create more sophisticated locking types and
 locking behaviors.
@@ -200,7 +200,7 @@ follows:
   lc::lock_auth_base::auth_type auth(new lc::lock_auth <lc::rw_lock>);
 
 As you might have guessed, there is a corresponding authorization type for each
-lock tyoe. (Actually, all of the authorization types work with all of the lock
+lock type. (Actually, all of the authorization types work with all of the lock
 types, but the behavior becomes the more restrictive of the two.)
 
 Given the authorization object 'auth' created above (they are all the same, in
@@ -215,6 +215,12 @@ will pass information to 'auth' to determine if a deadlock is possible. Since a
 deadlock is certain in this case, and because authorization objects err on the
 side of caution, the second line should result in 'NULL'. Thus, a deadlock has
 been prevented, deferring to the programmer to properly handle the error.
+
+Note that the authorization objects don't track the actual identities of the
+containers that it has locked. That would be helpful, but to be useful we would
+also need to implement more sophisticated deadlock-detection algorithms, which
+could make the whole system less efficient. (You might be able to create an
+authorization class that does, this however! I just haven't done so.)
 
 
 ----- Authorization Types -----
