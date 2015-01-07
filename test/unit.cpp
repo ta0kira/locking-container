@@ -95,8 +95,8 @@ struct philosopher_base {
   virtual int get_left_order()  const = 0;
   virtual int get_right_order() const = 0;
 
-  virtual bool barrier_wait()                   = 0;
-  virtual void timed_wait(bool optional = true) = 0;
+  virtual bool barrier_wait()                    = 0;
+  virtual void timed_wait(bool optional = false) = 0;
 
   virtual inline ~philosopher_base() {}
 
