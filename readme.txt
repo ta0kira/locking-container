@@ -364,7 +364,9 @@ manually recreating the deadlock that 'auth' is preventing!
 Another important part of this solution is the delay before retrying. This delay
 is at the beginning of the loop, when no locks are held, which allows other
 threads to do what they will with 'my_int0', under the assumption that that
-might have been the reason 'my_int1' was in use the last time around.
+might have been the reason 'my_int1' was in use the last time around. This delay
+isn't strictly necessary, but you don't know how long it will take until the
+lock requests succeed, so it's best to conserve resources.
 
 
 ,,,,, Solution 2 ,,,,,
