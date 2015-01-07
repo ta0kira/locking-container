@@ -107,7 +107,7 @@ struct philosopher_base {
     for (int retries = 0; true; retries++) {
       //NOTE: this allows everything to remain unlocked briefly, which is what
       //stops an infinite loop for auth.-based deadlock prevention
-//       if (retries > 0) self->timed_wait();
+      if (retries > 0) self->timed_wait();
 
       //NOTE: this should always succeed if multilocking is used; the return
       //value isn't important, because a 'NULL' should mean that we're not
@@ -123,7 +123,7 @@ struct philosopher_base {
 
       //(increase the chances of a potential deadlock)
       //NOTE: if we're multilocking, this is pointless; we can't cause a deadlock
-//       if (!using_multi) self->timed_wait();
+      if (!using_multi) self->timed_wait();
 
       //NOTE: this will fail if a potential deadlock is detected
       protected_chopstick::read_proxy right = self->read_right();
