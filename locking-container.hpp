@@ -297,7 +297,7 @@ public:
   //@{
 
   /*! Get a new authorization object.*/
-  virtual auth_type get_new_auth() const {
+  auth_type get_new_auth() const {
     return locking_container::new_auth();
   }
 
@@ -307,7 +307,7 @@ public:
   }
 
   /*! Get the container's order.*/
-  virtual order_type get_order() const {
+  order_type get_order() const {
     return locks.get_order();
   }
 
