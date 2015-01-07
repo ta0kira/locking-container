@@ -407,7 +407,7 @@ static void get_results(thread_set &threads, chopstick_set &chops, pthread_barri
   //NOTE: this should work for all lock types if only one lock is required at a time
   lock_auth_base::auth_type auth(new lock_auth <ordered_lock <rw_lock> >);
 
-  for (int i = 0; i < chops.size(); i++) {
+  for (int i = 0; i < (signed) chops.size(); i++) {
     protected_chopstick::read_proxy read = chops[i]->get_read_auth(auth);
     //TODO: error message
     if (!read) exit(ERROR_LOGIC);
