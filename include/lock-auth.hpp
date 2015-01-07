@@ -324,6 +324,9 @@ template <>
 class lock_auth <ordered_lock <rw_lock> > : public lock_auth_ordered_lock <rw_lock> {};
 
 template <>
+class lock_auth <ordered_lock <r_lock> > : public lock_auth_ordered_lock <r_lock> {};
+
+template <>
 class lock_auth <ordered_lock <w_lock> > : public lock_auth_ordered_lock <w_lock> {};
 
 
