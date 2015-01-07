@@ -142,12 +142,11 @@ struct philosopher_base {
 };
 
 
-//a sentient philosopher, which an actual strategy
+//a sentient philosopher, with an actual strategy
 
 class philosopher : public philosopher_base {
 public:
-  philosopher(int n, chopstick_pointer l, chopstick_pointer r,
-    pthread_barrier_t *b,
+  philosopher(int n, chopstick_pointer l, chopstick_pointer r, pthread_barrier_t *b,
     lock_auth_base::auth_type a = lock_auth_base::auth_type(),
     shared_multi_lock m = shared_multi_lock()) :
     number(n), barrier(b), auth(a), multi(m), left(l), right(r) {
@@ -228,7 +227,7 @@ static void get_results(thread_set &threads, chopstick_set &chops, pthread_barri
 
 int main(int argc, char *argv[]) {
   char error = 0;
-  int thread_count = 0, lock_method = 0, lock_type = 0, auth_type = 0, timeout = 5;
+  int thread_count = 0, lock_method = 0, lock_type = 0, auth_type = 0, timeout = 2;
 
   //argument parsing
 
@@ -315,7 +314,7 @@ static int print_help(const char *name, const char *message) {
   fprintf(stderr, "  1: w_lock\n");
   fprintf(stderr, "  2: ordered_lock <rw_lock>\n");
   fprintf(stderr, "  3: ordered_lock <w_lock>\n");
-  fprintf(stderr, "(timeout): time (in seconds) to wait for deadlock (default: 5s)\n");
+  fprintf(stderr, "(timeout): time (in seconds) to wait for deadlock (default: 2s)\n");
   return ERROR_ARGS;
 }
 
@@ -344,20 +343,20 @@ static void init_chopsticks(int lock_method, int lock_type, chopstick_set &chops
           //NOTE: lock order must be > 0 for order rules to apply
           case 0: chops[i].reset(new locking_container <chopstick, ordered_lock <rw_lock> > (chopstick(), i + 1)); break;
           case 1: chops[i].reset(new locking_container <chopstick, ordered_lock <w_lock> >  (chopstick(), i + 1)); break;
-          case 2: exit(ERROR_ARGS); break; //('ordered_lock <dumb_lock>' doesn't exist, for a reason)
+          //NOTE: dumb_lock deadlocks can only be prevented by only allowing one lock at a time
+          case 2: exit(ERROR_ARGS); break;
           default: exit(ERROR_ARGS); break;
         }
         break;
       default: exit(ERROR_ARGS); break;
     }
-    if (!chops[i]) exit(ERROR_LOGIC);
+    if (!chops[i]) exit(ERROR_SYSTEM);
   }
 }
 
 
 static void init_philosophers(int lock_method, int auth_type, chopstick_set &chops,
-  philosopher_set &phils,  pthread_barrier_t *barrier,
-  shared_multi_lock multi) {
+  philosopher_set &phils,  pthread_barrier_t *barrier, shared_multi_lock multi) {
   for (int i = 0; i < (signed) phils.size(); i++) {
     lock_auth_base::auth_type new_auth;
     switch (lock_method) {
@@ -387,7 +386,7 @@ static void init_philosophers(int lock_method, int auth_type, chopstick_set &cho
     phils[i].reset(new
       philosopher(i, chops[i % chops.size()], chops[(i + 1) % chops.size()],
         barrier, new_auth, multi));
-    if (!phils[i]) exit(ERROR_LOGIC);
+    if (!phils[i]) exit(ERROR_SYSTEM);
   }
 }
 
