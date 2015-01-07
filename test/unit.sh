@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-comp='c++ -Wall -pedantic -std=c++11 unit.cpp -g -o unit -lpthread'
+comp='c++ -Wall -pedantic -std=c++11 -g -O2 -I../include unit.cpp -o unit -lpthread'
 prog='./unit'
 threads='2 4 8 16 256'
 methods='0 1 2 3'

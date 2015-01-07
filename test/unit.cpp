@@ -49,6 +49,8 @@
 #include <sys/time.h>
 
 #include "locking-container.hpp"
+//(necessary for non-template source)
+#include "locking-container.inc"
 
 #define SUCCESS        0
 #define ERROR_ARGS     1
@@ -61,17 +63,17 @@
 //typedefs
 
 struct chopstick;
-typedef locking_container_base <chopstick>    protected_chopstick;
-typedef std::shared_ptr <protected_chopstick> chopstick_pointer;
-typedef std::shared_ptr <null_container>      shared_multi_lock;
+typedef lc::locking_container_base <chopstick> protected_chopstick;
+typedef std::shared_ptr <protected_chopstick>  chopstick_pointer;
+typedef std::vector <chopstick_pointer>       chopstick_set;
 
 struct philosopher_base;
 typedef std::unique_ptr <philosopher_base> philosopher_pointer;
+typedef std::vector <philosopher_pointer>  philosopher_set;
 
-typedef std::vector <philosopher_pointer> philosopher_set;
-typedef std::vector <chopstick_pointer>   chopstick_set;
+typedef std::shared_ptr <lc::multi_lock> shared_multi_lock;
 
-typedef std::vector <pthread_t>           thread_set;
+typedef std::vector <pthread_t> thread_set;
 
 
 //chopsticks for use by philosophers
@@ -85,7 +87,7 @@ struct chopstick {
 //philosophers, who must grab the left chopstick before the right
 
 struct philosopher_base {
-  virtual null_container::write_proxy      lock_multi() = 0;
+  virtual lc::multi_lock::write_proxy      lock_multi() = 0;
   virtual protected_chopstick::write_proxy write_left() = 0;
   virtual protected_chopstick::read_proxy  read_right() = 0;
 
@@ -107,7 +109,7 @@ struct philosopher_base {
 
       //NOTE: this should always succeed if multilocking is used; the return
       //value isn't important, because the proxy holds the lock if it's needed
-      null_container::write_proxy multi = self->lock_multi();
+      lc::multi_lock::write_proxy multi = self->lock_multi();
 
       //NOTE: this should only fail if there's an incompatibility between the
       //lock type, locking method, or auth. type, but that should be prevented
@@ -147,14 +149,15 @@ struct philosopher_base {
 class philosopher : public philosopher_base {
 public:
   philosopher(int n, chopstick_pointer l, chopstick_pointer r, pthread_barrier_t *b,
-    lock_auth_base::auth_type a = lock_auth_base::auth_type(),
+    lc::lock_auth_base::auth_type a = lc::lock_auth_base::auth_type(),
     shared_multi_lock m = shared_multi_lock()) :
     number(n), barrier(b), auth(a), multi(m), left(l), right(r) {
     assert(left.get() && right.get());
   }
 
-  null_container::write_proxy lock_multi() {
-    return multi? multi->get_write_auth(auth) : null_container::write_proxy();
+  lc::multi_lock::write_proxy lock_multi() {
+    //(method 2 : methods 0, 1, & 3)
+    return multi? multi->get_write_auth(auth) : lc::multi_lock::write_proxy();
   }
 
   protected_chopstick::write_proxy write_left() {
@@ -198,11 +201,11 @@ public:
   }
 
 protected:
-  const int                 number;
-  pthread_barrier_t        *barrier;
-  lock_auth_base::auth_type auth;
-  shared_multi_lock         multi;
-  chopstick_pointer         left, right;
+  const int                     number;
+  pthread_barrier_t            *barrier;
+  lc::lock_auth_base::auth_type auth;
+  shared_multi_lock             multi;
+  chopstick_pointer             left, right;
 };
 
 
@@ -261,7 +264,7 @@ int main(int argc, char *argv[]) {
 
   philosopher_set   all_philosophers(thread_count);
   chopstick_set     all_chopsticks(thread_count);
-  shared_multi_lock multi((lock_method == 2)? new null_container : NULL);
+  shared_multi_lock multi((lock_method == 2)? new lc::multi_lock : NULL);
   thread_set        all_threads(thread_count);
   pthread_barrier_t barrier;
   struct timespec   start, finish;
@@ -341,17 +344,17 @@ static void init_chopsticks(int lock_method, int lock_type, chopstick_set &chops
       case 1:
       case 2:
         switch (lock_type) {
-          case 0: chops[i].reset(new locking_container <chopstick, rw_lock>);   break;
-          case 1: chops[i].reset(new locking_container <chopstick, w_lock>);    break;
-          case 2: chops[i].reset(new locking_container <chopstick, dumb_lock>); break;
+          case 0: chops[i].reset(new lc::locking_container <chopstick, lc::rw_lock>);   break;
+          case 1: chops[i].reset(new lc::locking_container <chopstick, lc::w_lock>);    break;
+          case 2: chops[i].reset(new lc::locking_container <chopstick, lc::dumb_lock>); break;
           default: exit(ERROR_ARGS); break;
         }
         break;
       case 3:
         switch (lock_type) {
           //NOTE: lock order must be > 0 for order rules to apply
-          case 0: chops[i].reset(new locking_container <chopstick, ordered_lock <rw_lock> > (chopstick(), i + 1)); break;
-          case 1: chops[i].reset(new locking_container <chopstick, ordered_lock <w_lock> >  (chopstick(), i + 1)); break;
+          case 0: chops[i].reset(new lc::locking_container <chopstick, lc::ordered_lock <lc::rw_lock> > (chopstick(), i + 1)); break;
+          case 1: chops[i].reset(new lc::locking_container <chopstick, lc::ordered_lock <lc::w_lock> >  (chopstick(), i + 1)); break;
           //NOTE: dumb_lock deadlocks can only be prevented by only allowing one lock at a time
           case 2: exit(ERROR_ARGS); break;
           default: exit(ERROR_ARGS); break;
@@ -367,16 +370,16 @@ static void init_chopsticks(int lock_method, int lock_type, chopstick_set &chops
 static void init_philosophers(int lock_method, int auth_type, chopstick_set &chops,
   philosopher_set &phils,  pthread_barrier_t *barrier, shared_multi_lock multi) {
   for (int i = 0; i < (signed) phils.size(); i++) {
-    lock_auth_base::auth_type new_auth;
+    lc::lock_auth_base::auth_type new_auth;
     switch (lock_method) {
       case 0: break; //(no auth. used)
       case 1:
       case 2:
         switch (auth_type) {
-          case 0: new_auth.reset(new lock_auth <rw_lock>); break;
-          case 1: new_auth.reset(new lock_auth <w_lock>);  break;
-          case 2: new_auth.reset(new lock_auth <ordered_lock <rw_lock> >); break;
-          case 3: new_auth.reset(new lock_auth <ordered_lock <w_lock> >);  break;
+          case 0: new_auth.reset(new lc::lock_auth <lc::rw_lock>); break;
+          case 1: new_auth.reset(new lc::lock_auth <lc::w_lock>);  break;
+          case 2: new_auth.reset(new lc::lock_auth <lc::ordered_lock <lc::rw_lock> >); break;
+          case 3: new_auth.reset(new lc::lock_auth <lc::ordered_lock <lc::w_lock> >);  break;
           default: exit(ERROR_ARGS); break;
         }
         break;
@@ -384,8 +387,8 @@ static void init_philosophers(int lock_method, int auth_type, chopstick_set &cho
         switch (auth_type) {
           case 0:
           case 1: exit(ERROR_ARGS); break;
-          case 2: new_auth.reset(new lock_auth <ordered_lock <rw_lock> >); break;
-          case 3: new_auth.reset(new lock_auth <ordered_lock <w_lock> >);  break;
+          case 2: new_auth.reset(new lc::lock_auth <lc::ordered_lock <lc::rw_lock> >); break;
+          case 3: new_auth.reset(new lc::lock_auth <lc::ordered_lock <lc::w_lock> >);  break;
           default: exit(ERROR_ARGS); break;
         }
         break;
@@ -430,7 +433,7 @@ static void get_results(thread_set &threads, chopstick_set &chops, pthread_barri
   }
 
   //NOTE: this should work for all lock types if only one lock is required at a time
-  lock_auth_base::auth_type auth(new lock_auth <ordered_lock <rw_lock> >);
+  lc::lock_auth_base::auth_type auth(new lc::lock_auth <lc::ordered_lock <lc::rw_lock> >);
 
   for (int i = 0; i < (signed) chops.size(); i++) {
     protected_chopstick::read_proxy read = chops[i]->get_read_auth(auth);

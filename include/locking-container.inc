@@ -1,7 +1,7 @@
 #include "locks.hpp"
 #include "lock-auth.hpp"
 #include "object-proxy.hpp"
-#include "null-container.hpp"
+#include "multi-lock.hpp"
 
 namespace lc {
 
@@ -121,8 +121,8 @@ namespace lc {
 
   r_lock::r_lock() : readers(0) {}
 
-  r_lock::count_type r_lock::lock(lock_auth_base *auth, bool read, bool /*block*/ = true,
-    bool /*test*/ = false) {
+  r_lock::count_type r_lock::lock(lock_auth_base *auth, bool read, bool /*block*/,
+    bool /*test*/) {
     if (!read) return -1;
     //NOTE: because this container can't be a part of a deadlock, it's never
     //considered in use and the lock isn't counted. the 'auth' check is entirely
@@ -135,7 +135,7 @@ namespace lc {
     return new_readers;
   }
 
-  r_lock::count_type r_lock::unlock(lock_auth_base* /*auth*/, bool read, bool /*test*/ = false) {
+  r_lock::count_type r_lock::unlock(lock_auth_base* /*auth*/, bool read, bool /*test*/) {
     if (!read) return -1;
     //NOTE: this is atomic
     count_type new_readers = --readers;
@@ -228,12 +228,12 @@ namespace lc {
 
 
   broken_lock::count_type broken_lock::lock(lock_auth_base* /*auth*/, bool /*read*/,
-    bool /*block*/ = true, bool /*test*/ = false) {
+    bool /*block*/, bool /*test*/) {
     return -1;
   }
 
   broken_lock::count_type broken_lock::unlock(lock_auth_base* /*auth*/, bool /*read*/,
-    bool /*test*/ = false) {
+    bool /*test*/) {
     return -1;
   }
 
@@ -395,10 +395,10 @@ namespace lc {
   }
 
 
-//null-container.hpp
+//multi-lock.hpp
 
-  null_container_base::write_proxy null_container_base::get_write_auth(auth_type &authorization,
-    bool block = true) {
+  multi_lock_base::write_proxy multi_lock_base::get_write_auth(auth_type &authorization,
+    bool block) {
     if (!authorization) return write_proxy();
     return this->get_write_auth(authorization.get(), block);
   }
