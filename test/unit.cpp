@@ -65,7 +65,7 @@
 struct chopstick;
 typedef lc::locking_container_base <chopstick> protected_chopstick;
 typedef std::shared_ptr <protected_chopstick>  chopstick_pointer;
-typedef std::vector <chopstick_pointer>       chopstick_set;
+typedef std::vector <chopstick_pointer>        chopstick_set;
 
 struct philosopher_base;
 typedef std::unique_ptr <philosopher_base> philosopher_pointer;
@@ -79,8 +79,8 @@ typedef std::vector <pthread_t> thread_set;
 //chopsticks for use by philosophers
 
 struct chopstick {
-  chopstick() : value(-1), tries(0) {}
-  int value, tries;
+  chopstick() : value(-1), retries(0) {}
+  int value, retries;
 };
 
 
@@ -98,17 +98,20 @@ struct philosopher_base {
   virtual bool barrier_wait()               = 0;
   virtual void timed_wait(unsigned int = 1) = 0;
 
+  virtual inline ~philosopher_base() {}
+
   static void *eat_dinner(philosopher_base *self) {
     //TODO: error message
     if (!self || !self->barrier_wait()) exit(ERROR_THREAD);
 
-    for (int tries = 0; true; tries++) {
+    for (int retries = 0; true; retries++) {
       //NOTE: this allows everything to remain unlocked briefly, which is what
       //stops an infinite loop for auth.-based deadlock prevention
-      if (tries > 0) self->timed_wait();
+      if (retries > 0) self->timed_wait();
 
       //NOTE: this should always succeed if multilocking is used; the return
-      //value isn't important, because the proxy holds the lock if it's needed
+      //value isn't important, because a 'NULL' should mean that we're not
+      //using multilocking
       lc::multi_lock::write_proxy multi = self->lock_multi();
 
       //NOTE: this should only fail if there's an incompatibility between the
@@ -122,15 +125,18 @@ struct philosopher_base {
 
       //NOTE: this will fail if a potential deadlock is detected
       protected_chopstick::read_proxy right = self->read_right();
+      bool using_multi = multi;
       multi.clear(); //(clear the multi-lock as soon as possible)
       if (!right) {
+        //(if method 2 is used, the above lock should never fail)
+        if (using_multi) exit(ERROR_LOGIC);
         //NOTE: if you 'timed_wait' here, 'left' remains locked during the wait!
         continue;
       } else {
         //(if 'right' was already used, pass on its number)
         left->value = (right->value < 0)? self->get_number() : right->value;
-        left->tries = tries;
-        fprintf(stdout, "thread:\t%i\t%i\t%i\n", self->get_number(), left->value, left->tries);
+        left->retries = retries;
+        fprintf(stdout, "thread:\t%i\t%i\t%i\n", self->get_number(), left->value, left->retries);
         break;
       }
     }
@@ -139,8 +145,6 @@ struct philosopher_base {
     if (!self->barrier_wait()) exit(ERROR_THREAD);
     return NULL;
   }
-
-  virtual inline ~philosopher_base() {}
 };
 
 
@@ -355,7 +359,7 @@ static void init_chopsticks(int lock_method, int lock_type, chopstick_set &chops
           //NOTE: lock order must be > 0 for order rules to apply
           case 0: chops[i].reset(new lc::locking_container <chopstick, lc::ordered_lock <lc::rw_lock> > (chopstick(), i + 1)); break;
           case 1: chops[i].reset(new lc::locking_container <chopstick, lc::ordered_lock <lc::w_lock> >  (chopstick(), i + 1)); break;
-          //NOTE: dumb_lock deadlocks can only be prevented by only allowing one lock at a time
+          //NOTE: 'lc::ordered_lock <lc::dumb_lock>' doesn't allow out-of-order locking
           case 2: exit(ERROR_ARGS); break;
           default: exit(ERROR_ARGS); break;
         }
@@ -432,13 +436,13 @@ static void get_results(thread_set &threads, chopstick_set &chops, pthread_barri
     pthread_join(threads[i], NULL);
   }
 
-  //NOTE: this should work for all lock types if only one lock is required at a time
+  //NOTE: this should work for all lock types used in this program
   lc::lock_auth_base::auth_type auth(new lc::lock_auth <lc::ordered_lock <lc::rw_lock> >);
 
   for (int i = 0; i < (signed) chops.size(); i++) {
     protected_chopstick::read_proxy read = chops[i]->get_read_auth(auth);
     //TODO: error message
     if (!read) exit(ERROR_LOGIC);
-    fprintf(stdout, "final:\t%i\t%i\t%i\n", i, read->value, read->tries);
+    fprintf(stdout, "final:\t%i\t%i\t%i\n", i, read->value, read->retries);
   }
 }
