@@ -306,7 +306,7 @@ private:
 protected:
   typedef std::set <order_type> order_set;
 
-  bool order_allowed(order_type order) const {
+  bool order_allowed(order_type /*order*/) const {
     return true;
   }
 

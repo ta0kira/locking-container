@@ -59,9 +59,7 @@ public:
   /*! Return < 0 must mean failure. Should return the current number of read locks on success.*/
   virtual count_type unlock(lock_auth_base *auth, bool read, bool test = false) = 0;
 
-  virtual order_type get_order() const {
-    return 0;
-  }
+  virtual order_type get_order() const;
 
 protected:
   static inline bool register_or_test_auth(lock_auth_base *auth, bool read, bool lock_out,

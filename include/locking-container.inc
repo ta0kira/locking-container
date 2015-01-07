@@ -7,6 +7,11 @@ namespace lc {
 
 //locks.hpp
 
+  lock_base::order_type lock_base::get_order() const {
+    return 0;
+  }
+
+
   rw_lock::rw_lock() : readers(0), readers_waiting(0), writer(false),
     writer_waiting(false), the_writer(NULL) {
     pthread_mutex_init(&master_lock, NULL);

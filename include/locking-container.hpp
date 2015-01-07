@@ -421,17 +421,23 @@ inline bool try_copy_container(locking_container_base <Type1> &left,
   multi_lock::write_proxy multi;
   if (try_multi && !(multi = multi_lock.get_write_auth(authorization, block))) return false;
 
-  //NOTE: multi-lock isn't necessary and/or doesn't work with ordered locks
+  typename locking_container_base <Type1> ::write_proxy write;
+  typename locking_container_base <Type2> ::read_proxy  read;
 
-  typename locking_container_base <Type1> ::write_proxy write =
-    left.get_write_multi(multi_lock, authorization, block);
-  if (!write) return false;
+  //NOTE: not entirely necessary with multi-locking, but we'll play the game
 
-  typename locking_container_base <Type2> ::read_proxy read =
-    right.get_read_multi(multi_lock, authorization, block);
-  if (!read) return false;
+  //NOTE: if either is 0, the order is arbitrary
+  if (left.get_order() < right.get_order()) {
+    write = left.get_write_auth(authorization, block);
+    read  = right.get_read_auth(authorization, block);
+  } else {
+    read  = right.get_read_auth(authorization, block);
+    write = left.get_write_auth(authorization, block);
+  }
 
   if (try_multi) multi.clear();
+
+  if (!write || !read) return false;
 
   *write = *read;
   return true;
