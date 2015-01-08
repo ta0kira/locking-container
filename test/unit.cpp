@@ -110,7 +110,9 @@ struct philosopher_base {
     for (int retries = 0; true; retries++) {
       //NOTE: this allows everything to remain unlocked briefly, which is what
       //stops an infinite loop for auth.-based deadlock prevention
-      if (retries > 0) self->timed_wait();
+      //NOTE: skipping a wait every once in a while allows the threads to get
+      //out of sync, in case that's causing a de facto deadlock
+      if (retries > 0 && (retries + self->get_number()) % 2) self->timed_wait();
 
       //NOTE: this should always succeed if multilocking is used; the return
       //value isn't important, because a 'NULL' should mean that we're not

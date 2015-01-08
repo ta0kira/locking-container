@@ -255,6 +255,10 @@ container or container type. Alternatively, you can explicitly create an
 authorization object using 'new'. In all cases, the authorization object must be
 stored as a 'lc::lock_auth_base::auth_type', which is simply a shared pointer.
 
+Each of the authorization types below imposes lock-count restrictions that
+mirror those of the corresponding lock type. These restrictions are only part of
+what provides deadlock prevention.
+
 'lc::lock_auth <lc::rw_lock>': Mirroring 'lc::rw_lock', this auth. object allows
 the thread to hold multiple read locks, or a single write lock, but not both.
 
@@ -279,27 +283,29 @@ thread responds to being unable to lock any containers.
 
 The above restrictions are specifically meant to mirror the corresponding lock
 types. For the first three types above (but not the latter two), additional
-restrictions and exceptions are made:
+exceptions are made:
 
-  1) If the thread already holds at least one lock and another thread is
-     currently waiting for a write lock on the same container, the new lock will
-     probably be denied without blocking, because a deadlock is likely.
+  1) "Lockout" Exception: If another thread is waiting for a lock on the
+     container to be locked, and the calling thread holds a lock on any
+     container, a deadlock is possible; therefore, the lock will be rejected,
+     even if it wouldn't violate lock-count restrictions imposed by the auth.
+     object. This is where most of the deadlock prevention happens.
 
-  2) In some cases, the authorization object can determine that an exception to
-     the lock-count limits can be made without a deadlock happening. For
-     example, if the lock operation isn't going to block, allowing the new lock
-     isn't going to cause a deadlock. Specifically these three authorization
-     objects allow a violation of lock-count limits if the container to be
-     locked isn't currently locked.
+  2) "Must Block" Exception: If the lock operation doesn't need to block, a
+     deadlock isn't possible; therefore, the lock will be allowed, even if it
+     violates lock-count restrictions otherwise imposed by the auth. object.
+     This allows threads to potentially hold multiple read locks, which is
+     addressed in detail in a later section.
 
-  3) If the lock is 'lc::rw_lock', and the calling thread holds the write lock
-     and is requesting a read lock, then the lock will be allowed without
-     blocking.
+  3) "Writer Reads" Exception: If the container to be locked uses 'lc::rw_lock',
+     and the calling thread holds the write lock on that container and it's
+     requesting a read lock, the lock will be allowed, even if it violates
+     lock-count restrictions otherwise imposed by the auth. object. count
+     restrictions.
 
-The first is responsible for most of the deadlock prevention, and the second is
-what allows a thread to obtain multiple write locks, or a write lock and one or
-more read locks (under special circumstances, discussed below). The third allows
-multi-locking to work (also discussed below).
+Note that the first two exceptions are not possible with 'lc::dumb_lock' locks
+because the operation will always potentially block, and there is no way to know
+if another thread is already blocking for a lock.
 
 
 ----- Multiple Locks -----
@@ -361,10 +367,12 @@ The first solution is to simply use authorization objects as usual:
 
   lc::lock_auth_base::auth_type auth(int_rw::new_auth());
 
+  int n; //(see below)
+
   //...
 
-  for (bool tried = false; true; tried = true) {
-    if (tried) /*'nanosleep', etc.*/;
+  for (int tried = 0; true; tried++) {
+    if (tried && (tried + n) % 2) /*'nanosleep', etc.*/;
 
     int_base::write_proxy write0 = my_int0.get_write_auth(auth);
     if (!write0) /*probably a fatal error*/;
@@ -389,9 +397,11 @@ manually recreating the deadlock that 'auth' is preventing!
 Another important part of this solution is the delay before retrying. This delay
 is at the beginning of the loop, when no locks are held, which allows other
 threads to do what they will with 'my_int0', under the assumption that that
-might have been the reason 'my_int1' was in use the last time around. This delay
-isn't strictly necessary, but you don't know how long it will take until the
-lock requests succeed, so it's best to conserve resources.
+might have been the reason 'my_int1' was in use the last time around. On the
+other hand, you could have an unfortunate coincidence of identical threads that
+keep blocking each other out and sleeping in unison; therefore, you should skip
+a sleep occasionally, in order to cause the threads to become out of sync with
+each other (e.g., set 'n' above to a thread number).
 
 
 ,,,,, Solution 2 ,,,,,
