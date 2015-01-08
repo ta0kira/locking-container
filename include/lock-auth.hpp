@@ -58,13 +58,13 @@ public:
   virtual count_type writing_count() const;
 
   /*! Attempt to predict if a read authorization would be granted.*/
-  inline bool guess_read_allowed(bool lock_out = true, bool must_block = true,
+  inline bool guess_read_allowed(bool lock_out = false, bool must_block = false,
     order_type order = order_type()) const {
     return this->test_auth(true, lock_out, must_block, order);
   }
 
   /*! Attempt to predict if a write authorization would be granted.*/
-  inline bool guess_write_allowed(bool lock_out = true, bool must_block = true,
+  inline bool guess_write_allowed(bool lock_out = false, bool must_block = false,
     order_type order = order_type()) const {
     return this->test_auth(false, lock_out, must_block, order);
   }

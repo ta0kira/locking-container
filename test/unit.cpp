@@ -170,6 +170,10 @@ public:
   }
 
   protected_chopstick::write_proxy write_left() {
+    //NOTE: if the auth. type will always reject the lock, might as well exit
+    //TODO: error message
+    if (auth && !auth->guess_write_allowed(false, false, left->get_order())) exit(ERROR_LOGIC);
+    if (auth && multi && !auth->guess_read_allowed())                        exit(ERROR_LOGIC);
     //(method 2)
     if (multi) return left->get_write_multi(*multi, auth);
     //(methods 1 & 3)
@@ -179,6 +183,9 @@ public:
   }
 
   protected_chopstick::read_proxy read_right() {
+    //NOTE: if the auth. type will always reject the lock, might as well exit
+    //TODO: error message
+    if (auth && !auth->guess_read_allowed(false, false, right->get_order())) exit(ERROR_LOGIC);
     //(method 2)
     if (multi) return right->get_read_multi(*multi, auth);
     //(methods 1 & 3)
