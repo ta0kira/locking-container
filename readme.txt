@@ -193,6 +193,11 @@ solution here is to keep track of the locks that this thread has so that a
 deadlock can be prevented. Note that there is a trade-off here: A deadlock is
 prevented by causing an error that must subsequently be dealt with.
 
+It's important to note that the deadlock-prevention strategy used by this
+project is to reject a lock that might otherwise immediately result in a
+deadlock. The keyword here is "immediately"; it's only the last lock operation
+in the deadlock that counts.
+
 Lock tracking is done via authorization objects. These objects record important
 information regarding the locks a thread obtains, to be used when requesting
 subsequent locks to prevent deadlocks. You can create an authorization object as
@@ -250,8 +255,6 @@ container or container type. Alternatively, you can explicitly create an
 authorization object using 'new'. In all cases, the authorization object must be
 stored as a 'lc::lock_auth_base::auth_type', which is simply a shared pointer.
 
-Each of the following lock types is useful in its own way:
-
 'lc::lock_auth <lc::rw_lock>': Mirroring 'lc::rw_lock', this auth. object allows
 the thread to hold multiple read locks, or a single write lock, but not both.
 
@@ -274,26 +277,29 @@ containers) at one time.
 object denies all locks all the time. This is useful if you want to see how a
 thread responds to being unable to lock any containers.
 
-While the above restrictions make deadlock prevention possible, the exceptions
-to those restrictions are what make the authorization objects powerful. This is
-where a lock's state information becomes critical. For the first three types
-listed above (and not the latter two):
+The above restrictions are specifically meant to mirror the corresponding lock
+types. For the first three types above (but not the latter two), additional
+restrictions and exceptions are made:
 
   1) If the thread already holds at least one lock and another thread is
      currently waiting for a write lock on the same container, the new lock will
      probably be denied without blocking, because a deadlock is likely.
 
-  2) If the container to be locked is not currently locked by any other thread,
-     an exception will be made to the multiple lock restrictions.
+  2) In some cases, the authorization object can determine that an exception to
+     the lock-count limits can be made without a deadlock happening. For
+     example, if the lock operation isn't going to block, allowing the new lock
+     isn't going to cause a deadlock. Specifically these three authorization
+     objects allow a violation of lock-count limits if the container to be
+     locked isn't currently locked.
 
   3) If the lock is 'lc::rw_lock', and the calling thread holds the write lock
      and is requesting a read lock, then the lock will be allowed without
      blocking.
 
-The first exception is responsible for most of the deadlock prevention, and the
-second exception is what allows a thread to obtain multiple write locks, or a
-write lock and one or more read locks (under special circumstances, discussed
-below). The third exception allows multi-locking to work (also discussed below).
+The first is responsible for most of the deadlock prevention, and the second is
+what allows a thread to obtain multiple write locks, or a write lock and one or
+more read locks (under special circumstances, discussed below). The third allows
+multi-locking to work (also discussed below).
 
 
 ----- Multiple Locks -----

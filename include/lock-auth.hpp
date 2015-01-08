@@ -58,15 +58,15 @@ public:
   virtual count_type writing_count() const;
 
   /*! Attempt to predict if a read authorization would be granted.*/
-  inline bool guess_read_allowed(bool lock_out = true, bool in_use = true,
+  inline bool guess_read_allowed(bool lock_out = true, bool must_block = true,
     order_type order = order_type()) const {
-    return this->test_auth(true, lock_out, in_use, order);
+    return this->test_auth(true, lock_out, must_block, order);
   }
 
   /*! Attempt to predict if a write authorization would be granted.*/
-  inline bool guess_write_allowed(bool lock_out = true, bool in_use = true,
+  inline bool guess_write_allowed(bool lock_out = true, bool must_block = true,
     order_type order = order_type()) const {
-    return this->test_auth(false, lock_out, in_use, order);
+    return this->test_auth(false, lock_out, must_block, order);
   }
 
   virtual inline ~lock_auth_base() {}
@@ -74,16 +74,46 @@ public:
 protected:
   friend class lock_base;
 
-  /*! Obtain lock authorization.*/
-  virtual bool register_auth(bool read, bool lock_out, bool in_use, order_type order) = 0;
+  /*! \brief Register (or reject) a lock authorization.
+   *
+   * @see test_auth
+   * \attention The defined function must never block!
+   */
+  virtual bool register_auth(bool read, bool lock_out, bool must_block, order_type order) = 0;
 
-  /*! Test lock authorization.*/
-  virtual bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const = 0;
+  /*! \brief Register (or reject) a lock authorization.
+   *
+   * \attention The defined function must never block!
+   * \param read Read-only (true) or write (false) lock
+   * \param lock_out Is another thread (potentially) blocking for access?
+   * \param must_block Will another thread (potentially) block this lock operation?
+   * \param order Order number of the lock
+   *
+   * \return success (true) or rejection (false)
+   */
+  virtual bool test_auth(bool read, bool lock_out, bool must_block, order_type order) const = 0;
 
-  /*! Release lock authorization.*/
+  /*! \brief Retrieve a writable proxy to the contained object.
+   *
+   * \attention The defined function must never block!
+   * \param read Read-only (true) or write (false) lock
+   * \param order Order number of the lock
+   *
+   * \return success (true) or rejection (false)
+   *
+   * \return proxy object
+   */
   virtual void release_auth(bool read, order_type order) = 0;
 
-  /*! Allow locking of a lock with a particular order.*/
+  /*! \brief Determine if a lock on a lock with the specified order is allowed.
+   *
+   * \attention The defined function must never block!
+   * \param order Order number of the lock
+   *
+   * \return success (true) or rejection (false)
+   *
+   * \return proxy object
+   */
   virtual bool order_allowed(order_type order) const;
 };
 
@@ -135,8 +165,8 @@ private:
   lock_auth_rw_lock &operator = (const lock_auth_rw_lock&);
 
 protected:
-  bool register_auth(bool read, bool lock_out, bool in_use, order_type order);
-  bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const;
+  bool register_auth(bool read, bool lock_out, bool must_block, order_type order);
+  bool test_auth(bool read, bool lock_out, bool must_block, order_type order) const;
   void release_auth(bool read, order_type order);
 
 private:
@@ -176,8 +206,8 @@ private:
   lock_auth_r_lock &operator = (const lock_auth_r_lock&);
 
 protected:
-  bool register_auth(bool read, bool lock_out, bool in_use, order_type order);
-  bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const;
+  bool register_auth(bool read, bool lock_out, bool must_block, order_type order);
+  bool test_auth(bool read, bool lock_out, bool must_block, order_type order) const;
   void release_auth(bool read, order_type order);
 
 private:
@@ -217,8 +247,8 @@ private:
   lock_auth_w_lock &operator = (const lock_auth_w_lock&);
 
 protected:
-  bool register_auth(bool read, bool lock_out, bool in_use, order_type order);
-  bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const;
+  bool register_auth(bool read, bool lock_out, bool must_block, order_type order);
+  bool test_auth(bool read, bool lock_out, bool must_block, order_type order) const;
   void release_auth(bool read, order_type order);
 
 private:
@@ -257,8 +287,8 @@ private:
   lock_auth_dumb_lock &operator = (const lock_auth_dumb_lock&);
 
 protected:
-  bool register_auth(bool read, bool lock_out, bool in_use, order_type order);
-  bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const;
+  bool register_auth(bool read, bool lock_out, bool must_block, order_type order);
+  bool test_auth(bool read, bool lock_out, bool must_block, order_type order) const;
   void release_auth(bool read, order_type order);
 
 private:
@@ -331,21 +361,21 @@ protected:
     }
   }
 
-  bool register_auth(bool read, bool lock_out, bool in_use, order_type order) {
+  bool register_auth(bool read, bool lock_out, bool must_block, order_type order) {
     //NOTE: this calls the overridden 'order_allowed' above and 'test_auth' below
-    if (!this->base::register_auth(read, lock_out, in_use, order)) return false;
+    if (!this->base::register_auth(read, lock_out, must_block, order)) return false;
     this->register_order(order);
     return true;
   }
 
-  bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const {
+  bool test_auth(bool read, bool lock_out, bool must_block, order_type order) const {
     //use the normal rules if an unordered lock "taints" this auth., or if this
     //particular operation is out of order
     bool normal_rules = !order || unordered_locks ||
       (ordered_locks.size() && *ordered_locks.rbegin() >= order);
-    //(if order rules are respected, 'lock_out' and 'in_use' aren't needed)
+    //(if order rules are respected, 'lock_out' and 'must_block' aren't needed)
     return this->base::test_auth(read, normal_rules && lock_out,
-      normal_rules && in_use, order);
+      normal_rules && must_block, order);
   }
 
   void release_auth(bool read, order_type order) {
@@ -385,8 +415,8 @@ public:
   using lock_auth_base::order_type;
 
 protected:
-  bool register_auth(bool read, bool lock_out, bool in_use, order_type order);
-  bool test_auth(bool read, bool lock_out, bool in_use, order_type order) const;
+  bool register_auth(bool read, bool lock_out, bool must_block, order_type order);
+  bool test_auth(bool read, bool lock_out, bool must_block, order_type order) const;
   void release_auth(bool read, order_type order);
 };
 

@@ -22,16 +22,15 @@ namespace lc {
   rw_lock::count_type rw_lock::lock(lock_auth_base *auth, bool read, bool block, bool test) {
     if (pthread_mutex_lock(&master_lock) != 0) return -1;
     bool writer_reads = auth && the_writer == auth && read;
+    bool lock_out   = writer_waiting || readers_waiting;
+    //NOTE: see "wait" loops below for these conditions
+    bool must_block = writer_waiting || (read? writer : (readers || writer));
     //make sure this is an authorized lock type for the caller
-    //NOTE: a lock-out doesn't apply (3rd arg.) unless the waiting writer is
-    //being blocked by readers (don't use 'readers' in place of '!writer'!)
-    if (!register_or_test_auth(auth, read, !writer_reads && !writer && writer_waiting,
-                               !writer_reads && (writer || readers), this->get_order(), test)) {
+    if (!register_or_test_auth(auth, read, !writer_reads && lock_out, !writer_reads && must_block,
+                               this->get_order(), test)) {
       pthread_mutex_unlock(&master_lock);
       return -1;
     }
-    //check for blocking behavior
-    bool must_block = writer || writer_waiting || (!read && readers);
     //exception to blocking: if 'auth' holds the write lock and a read is requested
     if (!writer_reads && !block && must_block) {
       if (!test) release_auth(auth, read, this->get_order());
@@ -265,8 +264,8 @@ namespace lc {
     assert(!this->reading_count() && !this->writing_count());
   }
 
-  bool lock_auth_rw_lock::register_auth(bool read, bool lock_out, bool in_use, order_type order) {
-    if (!this->test_auth(read, lock_out, in_use, order)) return false;
+  bool lock_auth_rw_lock::register_auth(bool read, bool lock_out, bool must_block, order_type order) {
+    if (!this->test_auth(read, lock_out, must_block, order)) return false;
     if (read) {
       ++reading;
       assert(reading > 0);
@@ -277,10 +276,10 @@ namespace lc {
     return true;
   }
 
-  bool lock_auth_rw_lock::test_auth(bool read, bool lock_out, bool in_use, order_type order) const {
+  bool lock_auth_rw_lock::test_auth(bool read, bool lock_out, bool must_block, order_type order) const {
     if (!this->order_allowed(order)) return false;
-    if (writing && in_use)                return false;
-    if (reading && !read && in_use)       return false;
+    if (writing && must_block)            return false;
+    if (reading && !read && must_block)   return false;
     if ((reading || writing) && lock_out) return false;
     return true;
   }
@@ -308,17 +307,17 @@ namespace lc {
     assert(!this->reading_count());
   }
 
-  bool lock_auth_r_lock::register_auth(bool read, bool lock_out, bool in_use, order_type order) {
-    if (!this->test_auth(read, lock_out, in_use, order)) return false;
+  bool lock_auth_r_lock::register_auth(bool read, bool lock_out, bool must_block, order_type order) {
+    if (!this->test_auth(read, lock_out, must_block, order)) return false;
     ++reading;
     assert(reading > 0);
     return true;
   }
 
-  bool lock_auth_r_lock::test_auth(bool read, bool lock_out, bool /*in_use*/, order_type order) const {
+  bool lock_auth_r_lock::test_auth(bool read, bool lock_out, bool must_block, order_type order) const {
     if (!this->order_allowed(order)) return false;
-    if (!read)               return false;
-    if (reading && lock_out) return false;
+    if (!read) return false;
+    return !reading || !(must_block || lock_out);
     return true;
   }
 
@@ -339,16 +338,16 @@ namespace lc {
     assert(!this->writing_count());
   }
 
-  bool lock_auth_w_lock::register_auth(bool read, bool lock_out, bool in_use, order_type order) {
-    if (!this->test_auth(read, lock_out, in_use, order)) return false;
+  bool lock_auth_w_lock::register_auth(bool read, bool lock_out, bool must_block, order_type order) {
+    if (!this->test_auth(read, lock_out, must_block, order)) return false;
     ++writing;
     assert(writing > 0);
     return true;
   }
 
-  bool lock_auth_w_lock::test_auth(bool /*read*/, bool /*lock_out*/, bool in_use, order_type order) const {
+  bool lock_auth_w_lock::test_auth(bool /*read*/, bool lock_out, bool must_block, order_type order) const {
     if (!this->order_allowed(order)) return false;
-    return !writing || !in_use;
+    return !writing || !(must_block || lock_out);
   }
 
   void lock_auth_w_lock::release_auth(bool /*read*/, order_type /*order*/) {
@@ -367,14 +366,14 @@ namespace lc {
     assert(!this->writing_count());
   }
 
-  bool lock_auth_dumb_lock::register_auth(bool read, bool lock_out, bool in_use,
+  bool lock_auth_dumb_lock::register_auth(bool read, bool lock_out, bool must_block,
     order_type order) {
-    if (!this->test_auth(read, lock_out, in_use, order)) return false;
+    if (!this->test_auth(read, lock_out, must_block, order)) return false;
     writing = true;
     return true;
   }
 
-  bool lock_auth_dumb_lock::test_auth(bool /*read*/, bool /*lock_out*/, bool /*in_use*/,
+  bool lock_auth_dumb_lock::test_auth(bool /*read*/, bool /*lock_out*/, bool /*must_block*/,
     order_type order) const {
     if (!this->order_allowed(order)) return false;
     return !writing;
@@ -387,12 +386,12 @@ namespace lc {
 
 
   bool lock_auth_broken_lock::register_auth(bool /*read*/, bool /*lock_out*/,
-    bool /*in_use*/, order_type /*order*/) {
+    bool /*must_block*/, order_type /*order*/) {
     return false;
   }
 
   bool lock_auth_broken_lock::test_auth(bool /*read*/, bool /*lock_out*/,
-    bool /*in_use*/, order_type /*order*/) const {
+    bool /*must_block*/, order_type /*order*/) const {
     return false;
   }
 
