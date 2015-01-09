@@ -62,15 +62,13 @@ public:
   virtual order_type get_order() const;
 
 protected:
-  static inline bool register_or_test_auth(lock_auth_base *auth, bool read, bool lock_out,
-    bool in_use, order_type order, bool test_auth) {
+  static inline bool register_or_test_auth(lock_auth_base *auth, lock_data &l, bool test_auth) {
     if (!auth) return true;
-    return test_auth? auth->test_auth(read, lock_out, in_use, order) :
-                      auth->register_auth(read, lock_out, in_use, order);
+    return test_auth? auth->test_auth(l) : auth->register_auth(l);
   }
 
-  static inline void release_auth(lock_auth_base *auth, bool read, order_type order) {
-    if (auth) auth->release_auth(read, order);
+  static inline void release_auth(lock_auth_base *auth, unlock_data &l) {
+    if (auth) auth->release_auth(l);
   }
 };
 

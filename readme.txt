@@ -289,7 +289,10 @@ exceptions are made:
      container to be locked, and the calling thread holds a lock on any
      container, a deadlock is possible; therefore, the lock will be rejected,
      even if it wouldn't violate lock-count restrictions imposed by the auth.
-     object. This is where most of the deadlock prevention happens.
+     object. This is where most of the deadlock prevention happens. (In some
+     cases, the authorization object will request a non-blocking lock attempt
+     rather than rejecting the lock. This is only useful with 'lc::dumb_lock',
+     which never really knows if a thread is waiting.)
 
   2) "Must Block" Exception: If the lock operation doesn't need to block, a
      deadlock isn't possible; therefore, the lock will be allowed, even if it

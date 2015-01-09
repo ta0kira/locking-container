@@ -40,6 +40,38 @@
 namespace lc {
 
 
+/*! \class unlock_data
+ *  \brief Data passed to authorization objects when locking.
+ *
+ * @see lock_data
+ */
+
+struct unlock_data {
+  typedef unsigned long order_type;
+
+  inline unlock_data(bool r, order_type o) : read(r), order(o) {}
+
+  bool       read;  /**< Read-only (true) or write (false) lock.*/
+  order_type order; /**< Order number of the lock.*/
+};
+
+
+/*! \class lock_data
+ *  \brief Data passed to authorization objects when unlocking.
+ *
+ * @see unlock_data
+ */
+
+struct lock_data : public unlock_data {
+  inline lock_data(bool b, bool r, bool l, bool m, order_type o) :
+    unlock_data(r, o), block(b), lock_out(l), must_block(m) {}
+
+  bool block;      /**< Does the caller request blocking? (Can be changed.)*/
+  bool lock_out;   /**< Is another thread (potentially) blocking for access?*/
+  bool must_block; /**< Will another thread (potentially) block this lock operation?*/
+};
+
+
 /*! \class lock_auth_base
  *  \brief Base class for lock authorization classes.
  *
@@ -50,8 +82,8 @@ class lock_base;
 
 class lock_auth_base {
 public:
-  typedef long          count_type;
-  typedef unsigned long order_type;
+  typedef long                    count_type;
+  typedef unlock_data::order_type order_type;
   typedef std::shared_ptr <lock_auth_base> auth_type;
 
   virtual count_type reading_count() const;
@@ -60,13 +92,17 @@ public:
   /*! Attempt to predict if a read authorization would be granted.*/
   inline bool guess_read_allowed(bool lock_out = false, bool must_block = false,
     order_type order = order_type()) const {
-    return this->test_auth(true, lock_out, must_block, order);
+    lock_data l(true, true, lock_out, must_block, order);
+    //NOTE: if the auth. changes 'block' to 'false', that basically means "no!"
+    return this->test_auth(l) && l.block;
   }
 
   /*! Attempt to predict if a write authorization would be granted.*/
   inline bool guess_write_allowed(bool lock_out = false, bool must_block = false,
     order_type order = order_type()) const {
-    return this->test_auth(false, lock_out, must_block, order);
+    //NOTE: if the auth. changes 'block' to 'false', that basically means "no!"
+    lock_data l(true, false, lock_out, must_block, order);
+    return this->test_auth(l) && l.block;
   }
 
   virtual inline ~lock_auth_base() {}
@@ -79,36 +115,29 @@ protected:
    * @see test_auth
    * \attention The defined function must never block!
    */
-  virtual bool register_auth(bool read, bool lock_out, bool must_block, order_type order) = 0;
+  virtual bool register_auth(lock_data &l) = 0;
 
   /*! \brief Register (or reject) a lock authorization.
    *
    * \attention The defined function must never block!
-   * \param read Read-only (true) or write (false) lock
-   * \param lock_out Is another thread (potentially) blocking for access?
-   * \param must_block Will another thread (potentially) block this lock operation?
-   * \param order Order number of the lock
    *
    * \return success (true) or rejection (false)
    */
-  virtual bool test_auth(bool read, bool lock_out, bool must_block, order_type order) const = 0;
+  virtual bool test_auth(lock_data &l) const = 0;
 
   /*! \brief Retrieve a writable proxy to the contained object.
    *
    * \attention The defined function must never block!
-   * \param read Read-only (true) or write (false) lock
-   * \param order Order number of the lock
    *
    * \return success (true) or rejection (false)
    *
    * \return proxy object
    */
-  virtual void release_auth(bool read, order_type order) = 0;
+  virtual void release_auth(unlock_data &l) = 0;
 
   /*! \brief Determine if a lock on a lock with the specified order is allowed.
    *
    * \attention The defined function must never block!
-   * \param order Order number of the lock
    *
    * \return success (true) or rejection (false)
    *
@@ -165,9 +194,9 @@ private:
   lock_auth_rw_lock &operator = (const lock_auth_rw_lock&);
 
 protected:
-  bool register_auth(bool read, bool lock_out, bool must_block, order_type order);
-  bool test_auth(bool read, bool lock_out, bool must_block, order_type order) const;
-  void release_auth(bool read, order_type order);
+  bool register_auth(lock_data &l);
+  bool test_auth(lock_data &l) const;
+  void release_auth(unlock_data &l);
 
 private:
   count_type reading, writing;
@@ -206,9 +235,9 @@ private:
   lock_auth_r_lock &operator = (const lock_auth_r_lock&);
 
 protected:
-  bool register_auth(bool read, bool lock_out, bool must_block, order_type order);
-  bool test_auth(bool read, bool lock_out, bool must_block, order_type order) const;
-  void release_auth(bool read, order_type order);
+  bool register_auth(lock_data &l);
+  bool test_auth(lock_data &l) const;
+  void release_auth(unlock_data &l);
 
 private:
   count_type reading;
@@ -247,9 +276,9 @@ private:
   lock_auth_w_lock &operator = (const lock_auth_w_lock&);
 
 protected:
-  bool register_auth(bool read, bool lock_out, bool must_block, order_type order);
-  bool test_auth(bool read, bool lock_out, bool must_block, order_type order) const;
-  void release_auth(bool read, order_type order);
+  bool register_auth(lock_data &l);
+  bool test_auth(lock_data &l) const;
+  void release_auth(unlock_data &l);
 
 private:
   count_type writing;
@@ -287,9 +316,9 @@ private:
   lock_auth_dumb_lock &operator = (const lock_auth_dumb_lock&);
 
 protected:
-  bool register_auth(bool read, bool lock_out, bool must_block, order_type order);
-  bool test_auth(bool read, bool lock_out, bool must_block, order_type order) const;
-  void release_auth(bool read, order_type order);
+  bool register_auth(lock_data &l);
+  bool test_auth(lock_data &l) const;
+  void release_auth(unlock_data &l);
 
 private:
   bool writing;
@@ -361,26 +390,29 @@ protected:
     }
   }
 
-  bool register_auth(bool read, bool lock_out, bool must_block, order_type order) {
+  bool register_auth(lock_data &l) {
     //NOTE: this calls the overridden 'order_allowed' above and 'test_auth' below
-    if (!this->base::register_auth(read, lock_out, must_block, order)) return false;
-    this->register_order(order);
+    if (!this->base::register_auth(l)) return false;
+    this->register_order(l.order);
     return true;
   }
 
-  bool test_auth(bool read, bool lock_out, bool must_block, order_type order) const {
+  bool test_auth(lock_data &l) const {
     //use the normal rules if an unordered lock "taints" this auth., or if this
     //particular operation is out of order
-    bool normal_rules = !order || unordered_locks ||
-      (ordered_locks.size() && *ordered_locks.rbegin() >= order);
+    bool normal_rules = !l.order || unordered_locks ||
+      (ordered_locks.size() && *ordered_locks.rbegin() >= l.order);
     //(if order rules are respected, 'lock_out' and 'must_block' aren't needed)
-    return this->base::test_auth(read, normal_rules && lock_out,
-      normal_rules && must_block, order);
+    if (!normal_rules) {
+      l.lock_out   = false;
+      l.must_block = false;
+    }
+    return this->base::test_auth(l);
   }
 
-  void release_auth(bool read, order_type order) {
-    this->release_order(order);
-    this->base::release_auth(read, order);
+  void release_auth(unlock_data &l) {
+    this->release_order(l.order);
+    this->base::release_auth(l);
   }
 
 private:
@@ -415,9 +447,9 @@ public:
   using lock_auth_base::order_type;
 
 protected:
-  bool register_auth(bool read, bool lock_out, bool must_block, order_type order);
-  bool test_auth(bool read, bool lock_out, bool must_block, order_type order) const;
-  void release_auth(bool read, order_type order);
+  bool register_auth(lock_data &l);
+  bool test_auth(lock_data &l) const;
+  void release_auth(unlock_data &l);
 };
 
 struct broken_lock;
