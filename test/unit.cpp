@@ -188,6 +188,7 @@ public:
     //NOTE: if the auth. type will always reject the lock, might as well exit
     //TODO: error message
     if (auth && !auth->guess_read_allowed(false, false, right->get_order())) exit(ERROR_LOGIC);
+    if (auth && multi && !auth->guess_read_allowed())                        exit(ERROR_LOGIC);
     //(method 2)
     if (multi) return right->get_read_multi(*multi, auth);
     //(methods 1 & 3)
@@ -274,9 +275,6 @@ int main(int argc, char *argv[]) {
 
   if (argc > 6 && (sscanf(argv[6], "%i%c", &timeout, &error) != 1 || timeout < 1))
     return print_help(argv[0], "invalid timeout value");
-
-  if (lock_type == 2 && lock_method != 0)
-    return print_help(argv[0], "can only use dumb_lock with unsafe locking");
 
   if (lock_method == 0 && auth_type != 0)
     return print_help(argv[0], "auth type must be 0 with unsafe locking");
@@ -384,10 +382,9 @@ static void init_chopsticks(int lock_method, int lock_type, chopstick_set &chops
       case 3:
         switch (lock_type) {
           //NOTE: lock order must be > 0 for order rules to apply
-          case 0: chops[i].reset(new lc::locking_container <chopstick, lc::ordered_lock <lc::rw_lock> > (chopstick(), i + 1)); break;
-          case 1: chops[i].reset(new lc::locking_container <chopstick, lc::ordered_lock <lc::w_lock> >  (chopstick(), i + 1)); break;
-          //NOTE: 'lc::ordered_lock <lc::dumb_lock>' doesn't allow out-of-order locking
-          case 2: exit(ERROR_ARGS); break;
+          case 0: chops[i].reset(new lc::locking_container <chopstick, lc::ordered_lock <lc::rw_lock> >   (chopstick(), i + 1)); break;
+          case 1: chops[i].reset(new lc::locking_container <chopstick, lc::ordered_lock <lc::w_lock> >    (chopstick(), i + 1)); break;
+          case 2: chops[i].reset(new lc::locking_container <chopstick, lc::ordered_lock <lc::dumb_lock> > (chopstick(), i + 1)); break;
           default: exit(ERROR_ARGS); break;
         }
         break;

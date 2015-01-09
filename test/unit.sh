@@ -52,11 +52,9 @@ expected_result() {
   { [ "$m" ] && [ "$d" ] && [ "$l" ] && [ "$a" ]; } || return 1
   #unsafe locking with auth. type
   [ "$m" -eq 0 ] && [ "$a" -gt 0 ] && return 1
-  #dumb_lock with non-unsafe locking
-  [ "$l" -eq 2 ] && [ "$m" -gt 0 ] && return 1
   #ordered locks without ordered auth.
   [ "$m" -eq 3 ] && [ "$a" -lt 2 ] && return 1
-  #no causing a deadlock with multi-locking
+  #trying to cause a deadlock with multi-locking
   [ "$m" -eq 2 ] && [ "$d" -ne 0 ] && return 1
   #unsafe locking
   [ "$m" -eq 0 ] && return 3
