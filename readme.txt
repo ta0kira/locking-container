@@ -129,6 +129,12 @@ blocking preference. Set this to 'false' if you don't want to block for a lock.
 Note that there might still be a slight block while waiting for access to the
 status information stored by the lock.
 
+Note that the proxy objects act like shared pointers, and the lock isn't
+released until the reference count hits zero. This means that if you 'clear' a
+proxy, there might still be other references to it that keep the lock from being
+released. This behavior can be useful (vs. 'std::unique_ptr' behavior) if you
+want to organize the proxy objects, e.g., in a list or a queue.
+
 
 ----- Lock Types -----
 
