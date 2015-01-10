@@ -243,7 +243,7 @@ Note that the authorization objects don't track the actual identities of the
 containers that it has locked. That would be helpful, but to be useful we would
 also need to implement more sophisticated deadlock-detection algorithms, which
 could make the whole system less efficient. (You might be able to create an
-authorization class that does, this however! I just haven't done so.)
+authorization class that does this, however! I just haven't done so.)
 
 Authorization objects are not thread-safe; therefore, a single authorization
 object should only be used with one thread. In other words, each authorization

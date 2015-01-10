@@ -25,8 +25,8 @@ namespace lc {
     bool lock_out     = writer_waiting || readers_waiting;
     //NOTE: see "wait" loops below for these conditions
     bool must_block = writer_waiting || (read? writer : (readers || writer));
-    lock_data l(block, read, !writer_reads && lock_out, !writer_reads && must_block,
-      this->get_order());
+    lock_data l(this, block, read, !writer_reads && lock_out,
+      !writer_reads && must_block, this->get_order());
     //make sure this is an authorized lock type for the caller
     if (!register_or_test_auth(auth, l, test)) {
       pthread_mutex_unlock(&master_lock);
@@ -95,7 +95,7 @@ namespace lc {
   rw_lock::count_type rw_lock::unlock(lock_auth_base *auth, bool read, bool test) {
     if (pthread_mutex_lock(&master_lock) != 0) return -1;
     if (!test) {
-      unlock_data l(read, this->get_order());
+      unlock_data l(this, read, this->get_order());
       release_auth(auth, l);
     }
     if (read) {
@@ -138,7 +138,7 @@ namespace lc {
     //NOTE: because this container can't be a part of a deadlock, it's never
     //considered in use and the lock isn't counted. the 'auth' check is entirely
     //to allow for an auth. that denies all locks.
-    lock_data l(false, true, false, false, this->get_order());
+    lock_data l(this, false, true, false, false, this->get_order());
     if (!register_or_test_auth(auth, l, true)) return -1;
     //NOTE: this is atomic
     count_type new_readers = ++readers;
@@ -169,7 +169,7 @@ namespace lc {
   w_lock::count_type w_lock::lock(lock_auth_base *auth, bool /*read*/, bool block, bool test) {
     if (pthread_mutex_lock(&master_lock) != 0) return -1;
     //NOTE: 'false' is passed instead of 'read' because this can lock out other readers
-    lock_data l(block, false, writers_waiting, writer, this->get_order());
+    lock_data l(this, block, false, writers_waiting, writer, this->get_order());
     if (!register_or_test_auth(auth, l, test)) {
       pthread_mutex_unlock(&master_lock);
       return -1;
@@ -199,7 +199,7 @@ namespace lc {
   w_lock::count_type w_lock::unlock(lock_auth_base *auth, bool /*read*/, bool test) {
     if (pthread_mutex_lock(&master_lock) != 0) return -1;
     if (!test) {
-      unlock_data l(false, this->get_order());
+      unlock_data l(this, false, this->get_order());
       release_auth(auth, l);
     }
     assert(writer);
@@ -223,7 +223,7 @@ namespace lc {
   }
 
   dumb_lock::count_type dumb_lock::lock(lock_auth_base *auth, bool /*read*/, bool block, bool test) {
-    lock_data l(block, false, true, true, this->get_order());
+    lock_data l(this, block, false, true, true, this->get_order());
     if (!register_or_test_auth(auth, l, test)) return -1;
     block = l.block; //(auth. can override blocking mode to allow lock attempt)
     if ((block? pthread_mutex_lock : pthread_mutex_trylock)(&master_lock) != 0) {
@@ -235,7 +235,7 @@ namespace lc {
 
   dumb_lock::count_type dumb_lock::unlock(lock_auth_base *auth, bool /*read*/, bool test) {
     if (!test) {
-      unlock_data l(false, this->get_order());
+      unlock_data l(this, false, this->get_order());
       release_auth(auth, l);
     }
     return (pthread_mutex_unlock(&master_lock) == 0)? 0 : -1;

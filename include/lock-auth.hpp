@@ -46,13 +46,17 @@ namespace lc {
  * @see lock_data
  */
 
+class lock_base;
+
 struct unlock_data {
   typedef unsigned long order_type;
 
-  inline unlock_data(bool r, order_type o) : read(r), order(o) {}
+  inline unlock_data(const lock_base *i, bool r, order_type o) :
+  ident(i), read(r), order(o) {}
 
-  bool       read;  /**< Read-only (true) or write (false) lock.*/
-  order_type order; /**< Order number of the lock.*/
+  const void *ident; /**< Lock identifier.*/
+  bool        read;  /**< Read-only (true) or write (false) lock.*/
+  order_type  order; /**< Order number of the lock.*/
 };
 
 
@@ -63,8 +67,8 @@ struct unlock_data {
  */
 
 struct lock_data : public unlock_data {
-  inline lock_data(bool b, bool r, bool l, bool m, order_type o) :
-    unlock_data(r, o), block(b), lock_out(l), must_block(m) {}
+  inline lock_data(const lock_base *i, bool b, bool r, bool l, bool m, order_type o) :
+    unlock_data(i, r, o), block(b), lock_out(l), must_block(m) {}
 
   bool block;      /**< Does the caller request blocking? (Can be changed.)*/
   bool lock_out;   /**< Is another thread (potentially) blocking for access?*/
@@ -92,7 +96,7 @@ public:
   /*! Attempt to predict if a read authorization would be granted.*/
   inline bool guess_read_allowed(bool lock_out = false, bool must_block = false,
     order_type order = order_type()) const {
-    lock_data l(true, true, lock_out, must_block, order);
+    lock_data l(NULL, true, true, lock_out, must_block, order);
     //NOTE: if the auth. changes 'block' to 'false', that basically means "no!"
     return this->test_auth(l) && l.block;
   }
@@ -101,7 +105,7 @@ public:
   inline bool guess_write_allowed(bool lock_out = false, bool must_block = false,
     order_type order = order_type()) const {
     //NOTE: if the auth. changes 'block' to 'false', that basically means "no!"
-    lock_data l(true, false, lock_out, must_block, order);
+    lock_data l(NULL, true, false, lock_out, must_block, order);
     return this->test_auth(l) && l.block;
   }
 
