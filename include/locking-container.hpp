@@ -416,10 +416,10 @@ inline bool try_copy_container(locking_container_base <Type1> &left,
  */
 template <class Type1, class Type2>
 inline bool try_copy_container(locking_container_base <Type1> &left,
-  locking_container_base <Type2> &right, multi_lock_base &multi_lock,
+  locking_container_base <Type2> &right, multi_lock_base &master_lock,
   lock_auth_base::auth_type &authorization, bool block = true, bool try_multi = true) {
   multi_lock::write_proxy multi;
-  if (try_multi && !(multi = multi_lock.get_write_auth(authorization, block))) return false;
+  if (try_multi && !(multi = master_lock.get_write_auth(authorization, block))) return false;
 
   typename locking_container_base <Type1> ::write_proxy write;
   typename locking_container_base <Type2> ::read_proxy  read;
@@ -428,11 +428,11 @@ inline bool try_copy_container(locking_container_base <Type1> &left,
 
   //NOTE: if either is 0, the order is arbitrary
   if (left.get_order() < right.get_order()) {
-    write = left.get_write_auth(authorization, block);
-    read  = right.get_read_auth(authorization, block);
+    write = left.get_write_multi(master_lock, authorization, block);
+    read  = right.get_read_multi(master_lock, authorization, block);
   } else {
-    read  = right.get_read_auth(authorization, block);
-    write = left.get_write_auth(authorization, block);
+    read  = right.get_read_multi(master_lock, authorization, block);
+    write = left.get_write_multi(master_lock, authorization, block);
   }
 
   if (try_multi) multi.clear();
