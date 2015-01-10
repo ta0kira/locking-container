@@ -367,7 +367,7 @@ private:
   lock_auth_ordered_lock &operator = (const lock_auth_ordered_lock&);
 
 protected:
-  typedef std::set <order_type> order_set;
+  typedef std::multiset <order_type> order_set;
 
   bool order_allowed(order_type /*order*/) const {
     return true;
