@@ -497,6 +497,21 @@ proceed to access the containers that the multi-locking thread hasn't locked,
 and so they can access the locked containers immediately when they become free
 again.
 
+Alternatively, suppose you don't want a multi-lock, but you want to wait until
+no multi-lock is waiting, and then prevent a new multi-lock from happening. This
+is useful in cases where the the 'lc::multi_lock' actually serves as a lock for
+some larger aggregate structure that isn't stored in a 'lc::locking_container'.
+(See example/graph-multi.cpp for a specific example.) To do this, you request a
+read lock, rather than a write lock:
+
+  lc::multi_lock::read_proxy protect_read = master_lock.get_read_auth(auth);
+
+Provided 'auth' holds no other locks, this will block until there are no write
+locks pending/held on 'master_lock'. Note that the only protection provided here
+is temporarily locking out multi-locks; this functionality is provided so that
+you can lock out such operations when you don't actually need to take out a lock
+on any other object.
+
 
 ,,,,, Solution 3 ,,,,,
 
