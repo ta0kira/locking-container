@@ -1,3 +1,47 @@
+/* This software is released under the BSD License.
+ |
+ | Copyright (c) 2015, Kevin P. Barry [ta0kira@gmail.com]
+ | All rights reserved.
+ |
+ | Redistribution  and  use  in  source  and   binary  forms,  with  or  without
+ | modification, are permitted provided that the following conditions are met:
+ |
+ | - Redistributions of source code must retain the above copyright notice, this
+ |   list of conditions and the following disclaimer.
+ |
+ | - Redistributions in binary  form must reproduce the  above copyright notice,
+ |   this list  of conditions and the following disclaimer in  the documentation
+ |   and/or other materials provided with the distribution.
+ |
+ | - Neither the name  of the  Locking Container Project  nor  the names  of its
+ |   contributors may be  used to endorse or promote products  derived from this
+ |   software without specific prior written permission.
+ |
+ | THIS SOFTWARE IS  PROVIDED BY THE COPYRIGHT HOLDERS AND  CONTRIBUTORS "AS IS"
+ | AND ANY  EXPRESS OR IMPLIED  WARRANTIES,  INCLUDING, BUT  NOT LIMITED TO, THE
+ | IMPLIED WARRANTIES OF  MERCHANTABILITY  AND FITNESS FOR A  PARTICULAR PURPOSE
+ | ARE DISCLAIMED.  IN  NO EVENT SHALL  THE COPYRIGHT  OWNER  OR CONTRIBUTORS BE
+ | LIABLE  FOR  ANY  DIRECT,   INDIRECT,  INCIDENTAL,   SPECIAL,  EXEMPLARY,  OR
+ | CONSEQUENTIAL   DAMAGES  (INCLUDING,  BUT  NOT  LIMITED  TO,  PROCUREMENT  OF
+ | SUBSTITUTE GOODS OR SERVICES;  LOSS  OF USE,  DATA,  OR PROFITS;  OR BUSINESS
+ | INTERRUPTION)  HOWEVER  CAUSED  AND ON  ANY  THEORY OF LIABILITY,  WHETHER IN
+ | CONTRACT,  STRICT  LIABILITY, OR  TORT (INCLUDING  NEGLIGENCE  OR  OTHERWISE)
+ | ARISING IN ANY  WAY OUT OF  THE USE OF THIS SOFTWARE, EVEN  IF ADVISED OF THE
+ | POSSIBILITY OF SUCH DAMAGE.
+ +~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+/* This is a complex example of using multi-locking with a graph. Each node in
+ * the graph has its own lock, which allows multiple threads to operate on nodes
+ * in the graph at once. When the structure needs to be changed, a multi-lock
+ * needs to be obtained to be sure that no other threads are currently accessing
+ * any of the nodes.
+ *
+ * This needs more comments, which will happen at some other time.
+ *
+ * Suggested compilation command:
+ *   c++ -Wall -pedantic -std=c++11 -O2 -I../include graph-multi.cpp -o graph-multi -lpthread
+ */
+
 #include <set>
 #include <map>
 #include <queue>
@@ -356,5 +400,4 @@ int main() {
       print_graph(main_graph, main_auth, &tagged_value::get_tag);
     }
   }
-
 }
