@@ -3,6 +3,7 @@
 #include <queue>
 #include <string>
 #include <memory>
+#include <utility>
 #include <cassert>
 #include <iostream>
 
@@ -48,6 +49,7 @@ public:
     return change_connection_common(&erase_edge, left, right, auth, master_lock, try_multi);
   }
 
+  //NOTE: this might never get called if there's a circular reference!
   virtual inline ~graph_node() {}
 
   connected_nodes out, in;
@@ -179,16 +181,18 @@ public:
     return this->change_node(index, auth, &replace_node, value);
   }
 
-  virtual bool erase_node(const index_type &index, shared_node value, auth_type auth) {
+  virtual bool erase_node(const index_type &index, auth_type auth) {
     return this->change_node(index, auth, &remove_node);
   }
 
   virtual ~graph() {
     for (typename node_map::iterator current = all_nodes.begin(), end = all_nodes.end();
          current != end; ++current) {
+      assert(current->second.get());
       //NOTE: if it's already locked, that's a serious problem here
       typename node::protected_node::write_proxy write = current->second->get_write(false);
       assert(write);
+      //NOTE: doing this prevents a circular reference memory leak
       write->out.clear();
       write->in.clear();
     }
@@ -262,7 +266,7 @@ static bool print_graph(graph_head <Type> &the_graph, auth_type auth,
   if (!head) return true;
 
   typename graph_type::protected_node::write_proxy next =
-    head->get_write_multi(the_graph.show_master_lock(), auth);
+    head->get_write_multi(the_graph.show_master_lock(), auth, false);
   //(nothing should be locked at this point)
   if (!next) return false;
   locked.push(next);
@@ -275,7 +279,7 @@ static bool print_graph(graph_head <Type> &the_graph, auth_type auth,
          current != end; ++current) {
       assert(current->get());
       typename graph_type::protected_node::write_proxy write =
-        (*current)->get_write_multi(the_graph.show_master_lock(), auth);
+        (*current)->get_write_multi(the_graph.show_master_lock(), auth, false);
       //NOTE: this should only happen if we already have the lock
       if (!write) continue;
 
@@ -333,12 +337,24 @@ int main() {
       return 1;
     }
     if (!main_graph.connect_nodes(left, right, main_auth)) {
-      fprintf(stderr, "could not connect node %i to %i\n", from, to);
+      fprintf(stderr, "could not connect node %i to node %i\n", from, to);
       return 1;
     } else {
-      fprintf(stderr, "connected node %i to %i\n", from, to);
+      fprintf(stderr, "connected node %i to node %i\n", from, to);
     }
   }
 
   print_graph(main_graph, main_auth, &tagged_value::get_tag);
+
+  for (int i = 0; i < 10; i++) {
+    int remove = i;
+    if (!main_graph.erase_node(remove, main_auth)) {
+      fprintf(stderr, "could not erase node %i\n", remove);
+      return 1;
+    } else {
+      fprintf(stderr, "erased node %i\n", remove);
+      print_graph(main_graph, main_auth, &tagged_value::get_tag);
+    }
+  }
+
 }
