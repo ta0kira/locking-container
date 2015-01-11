@@ -378,7 +378,7 @@ protected:
       ++unordered_locks;
       assert(unordered_locks);
     } else {
-      assert(ordered_locks.find(order) == ordered_locks.end());
+      //NOTE: multiple locks of the same order are allowed
       ordered_locks.insert(order);
     }
   }
@@ -438,6 +438,10 @@ class lock_auth <ordered_lock <w_lock> > : public lock_auth_ordered_lock <w_lock
 //NOTE: this will still only allow one lock at a time; is that what you really want?
 template <>
 class lock_auth <ordered_lock <dumb_lock> > : public lock_auth_ordered_lock <dumb_lock> {};
+
+
+/*! An authorization type that should be acceptable for use with all lock types.*/
+typedef lock_auth <ordered_lock <rw_lock> > max_auth;
 
 
 /*! \class lock_auth_broken_lock

@@ -50,14 +50,17 @@ typedef std::shared_ptr <multi_lock_base> shared_multi_lock;
 class multi_lock_base {
 public:
   typedef object_proxy <void>       write_proxy;
+  typedef object_proxy <void>       read_proxy;
   typedef lock_auth_base::auth_type auth_type;
 
   virtual write_proxy get_write_auth(auth_type &authorization, bool block = true);
+  virtual read_proxy  get_read_auth(auth_type &authorization,  bool block = true);
 
   virtual inline ~multi_lock_base() {}
 
 protected:
   virtual write_proxy get_write_auth(lock_auth_base *authorization, bool block = true) = 0;
+  virtual read_proxy  get_read_auth(lock_auth_base *authorization,  bool block = true) = 0;
 
 private:
   template <class> friend class locking_container_base;
@@ -77,6 +80,7 @@ private:
 public:
   typedef multi_lock_base base;
   using base::write_proxy;
+  using base::read_proxy;
   using base::auth_type;
   using base::get_write_auth;
 
@@ -87,7 +91,11 @@ private:
   multi_lock &operator = (const multi_lock&);
 
   inline write_proxy get_write_auth(lock_auth_base *authorization, bool block = true) {
-    return write_proxy(true, &locks, authorization, block, NULL);
+    return write_proxy(true, &locks, authorization, false, block, NULL);
+  }
+
+  inline read_proxy get_read_auth(lock_auth_base *authorization, bool block = true) {
+    return read_proxy(true, &locks, authorization, true, block, NULL);
   }
 
   inline lock_base *get_lock_object() {

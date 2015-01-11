@@ -426,4 +426,10 @@ namespace lc {
     return this->get_write_auth(authorization.get(), block);
   }
 
+  multi_lock_base::read_proxy multi_lock_base::get_read_auth(auth_type &authorization,
+    bool block) {
+    if (!authorization) return read_proxy();
+    return this->get_read_auth(authorization.get(), block);
+  }
+
 } //namespace lc

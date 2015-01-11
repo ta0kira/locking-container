@@ -333,8 +333,8 @@ private:
   friend class multi_lock;
 
   object_proxy(bool value, lock_base *new_locks, lock_auth_base *new_auth,
-    bool block, lock_base *new_multi) :
-    object_proxy_base <void> ((void*) value, new_locks, new_auth, false, block, new_multi) {}
+    bool read, bool block, lock_base *new_multi) :
+    object_proxy_base <void> ((void*) value, new_locks, new_auth, read, block, new_multi) {}
 
 public:
   object_proxy() : object_proxy_base <void> () {}
