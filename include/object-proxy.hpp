@@ -197,6 +197,22 @@ public:
     return this->pointer() == equal.pointer();
   }
 
+  /*! \brief Compare the two referenced objects.
+   *
+   * \return equal (true) or unequal (false)
+   */
+  inline bool operator != (const object_proxy &equal) const {
+    return this->pointer() != equal.pointer();
+  }
+
+  /*! \brief Compare the two referenced objects.
+   *
+   * \return equal (true) or unequal (false)
+   */
+  inline bool operator != (const object_proxy <const Type> &equal) const {
+    return this->pointer() != equal.pointer();
+  }
+
   //@}
 
   /** @name Trivial Iterator Functions
@@ -276,6 +292,22 @@ public:
    */
   inline bool operator == (const object_proxy <Type> &equal) const {
     return this->pointer() == equal.pointer();
+  }
+
+  /*! \brief Compare the two referenced objects.
+   *
+   * \return equal (true) or unequal (false)
+   */
+  inline bool operator != (const object_proxy &equal) const {
+    return this->pointer() != equal.pointer();
+  }
+
+  /*! \brief Compare the two referenced objects.
+   *
+   * \return equal (true) or unequal (false)
+   */
+  inline bool operator != (const object_proxy <Type> &equal) const {
+    return this->pointer() != equal.pointer();
   }
 
   //@}

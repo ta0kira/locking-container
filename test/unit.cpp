@@ -71,8 +71,6 @@ struct philosopher_base;
 typedef std::unique_ptr <philosopher_base> philosopher_pointer;
 typedef std::vector <philosopher_pointer>  philosopher_set;
 
-typedef std::shared_ptr <lc::multi_lock> shared_multi_lock;
-
 typedef std::vector <pthread_t> thread_set;
 
 
@@ -161,7 +159,7 @@ class philosopher : public philosopher_base {
 public:
   philosopher(int n, chopstick_pointer l, chopstick_pointer r, pthread_barrier_t *b,
     lc::lock_auth_base::auth_type a = lc::lock_auth_base::auth_type(),
-    shared_multi_lock m = shared_multi_lock(), bool d = true) :
+    lc::shared_multi_lock m = lc::shared_multi_lock(), bool d = true) :
     number(n), deadlock(d), barrier(b), auth(a), multi(m), left(l), right(r) {
     assert(left.get() && right.get());
   }
@@ -225,7 +223,7 @@ protected:
   bool                          deadlock;
   pthread_barrier_t            *barrier;
   lc::lock_auth_base::auth_type auth;
-  shared_multi_lock             multi;
+  lc::shared_multi_lock             multi;
   chopstick_pointer             left, right;
 };
 
@@ -239,7 +237,7 @@ static void deadlock_timeout(int sig);
 static void init_chopsticks(int lock_method, int lock_type, chopstick_set &chops);
 
 static void init_philosophers(int lock_method, int auth_type, chopstick_set &chops,
-  philosopher_set &phils, pthread_barrier_t *barrier, shared_multi_lock multi,
+  philosopher_set &phils, pthread_barrier_t *barrier, lc::shared_multi_lock multi,
   bool deadlock);
 
 static void start_threads(thread_set &threads, philosopher_set &phils,
@@ -289,7 +287,7 @@ int main(int argc, char *argv[]) {
 
   philosopher_set   all_philosophers(thread_count);
   chopstick_set     all_chopsticks(thread_count);
-  shared_multi_lock multi((lock_method == 2)? new lc::multi_lock : NULL);
+  lc::shared_multi_lock multi((lock_method == 2)? new lc::multi_lock : NULL);
   thread_set        all_threads(thread_count);
   pthread_barrier_t barrier;
   struct timespec   start, finish;
@@ -396,7 +394,7 @@ static void init_chopsticks(int lock_method, int lock_type, chopstick_set &chops
 
 
 static void init_philosophers(int lock_method, int auth_type, chopstick_set &chops,
-  philosopher_set &phils,  pthread_barrier_t *barrier, shared_multi_lock multi,
+  philosopher_set &phils, pthread_barrier_t *barrier, lc::shared_multi_lock multi,
   bool deadlock) {
   for (int i = 0; i < (signed) phils.size(); i++) {
     lc::lock_auth_base::auth_type new_auth;

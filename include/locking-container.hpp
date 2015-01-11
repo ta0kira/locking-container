@@ -90,6 +90,8 @@
 #ifndef lc_locking_container_hpp
 #define lc_locking_container_hpp
 
+#include <utility>
+
 #include "locks.hpp"
 #include "lock-auth.hpp"
 #include "object-proxy.hpp"
@@ -278,7 +280,7 @@ public:
    * \param args arguments to pass to the lock's constructor.
    */
   template <class ... Types>
-  explicit locking_container(type &&object, Types ... args) : contained(object), locks(args...) {}
+  explicit locking_container(type &&object, Types ... args) : contained(std::move(object)), locks(args...) {}
 
   /*! \brief Constructor.
    *

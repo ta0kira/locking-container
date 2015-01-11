@@ -39,6 +39,10 @@
 namespace lc {
 
 
+class multi_lock_base;
+typedef std::shared_ptr <multi_lock_base> shared_multi_lock;
+
+
 /*! \class multi_lock_base
  *  \brief Base class for \ref multi_lock.
  */
