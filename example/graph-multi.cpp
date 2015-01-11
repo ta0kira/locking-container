@@ -121,7 +121,7 @@ struct graph_head {
   virtual shared_node get_graph_head() = 0;
 
   virtual typename lc::multi_lock_base::write_proxy get_master_lock(auth_type auth) = 0;
-  virtual lc::multi_lock_base &show_master_lock() = 0;
+  virtual shared_multi_lock show_master_lock() = 0;
 
   virtual inline ~graph_head() {}
 };
@@ -153,9 +153,9 @@ public:
     return master_lock? master_lock->get_write_auth(auth) : lc::multi_lock_base::write_proxy();
   }
 
-  typename lc::multi_lock_base &show_master_lock() {
+  shared_multi_lock show_master_lock() {
     assert(master_lock.get());
-    return *master_lock;
+    return master_lock;
   }
 
   virtual bool connect_nodes(shared_node left, shared_node right, auth_type auth) {
@@ -266,7 +266,7 @@ static bool print_graph(graph_head <Type> &the_graph, auth_type auth,
   if (!head) return true;
 
   typename graph_type::protected_node::write_proxy next =
-    head->get_write_multi(the_graph.show_master_lock(), auth, false);
+    head->get_write_multi(*the_graph.show_master_lock(), auth, false);
   //(nothing should be locked at this point)
   if (!next) return false;
   locked.push(next);
@@ -279,7 +279,7 @@ static bool print_graph(graph_head <Type> &the_graph, auth_type auth,
          current != end; ++current) {
       assert(current->get());
       typename graph_type::protected_node::write_proxy write =
-        (*current)->get_write_multi(the_graph.show_master_lock(), auth, false);
+        (*current)->get_write_multi(*the_graph.show_master_lock(), auth, false);
       //NOTE: this should only happen if we already have the lock
       if (!write) continue;
 
