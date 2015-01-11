@@ -145,7 +145,7 @@ protected:
     typename protected_node::write_proxy write_l, write_r;
     get_two_writes(left, right, auth, master_lock, write_l, write_r);
     multi.clear();
-    if (!write_l && !write_r) return false;
+    if (!write_l || !write_r) return false;
 
     (*func)(write_l->out, right);
     (*func)(write_r->in,  left);
@@ -202,18 +202,25 @@ public:
     return master_lock;
   }
 
-  virtual bool connect_nodes(shared_node left, shared_node right, auth_type auth) {
+  virtual bool connect_nodes(shared_node left, shared_node right, auth_type auth,
+    bool try_multi = true) {
     //NOTE: this doesn't use 'find_node' so that error returns only pertain to
     //failed lock operations
-    return node::connect_nodes(left, right, auth, master_lock);
-  }
-  virtual bool disconnect_nodes(shared_node left, shared_node right, auth_type auth) {
-    //NOTE: this doesn't use 'find_node' so that error returns only pertain to
-    //failed lock operations
-    return node::disconnect_nodes(left, right, auth, master_lock);
+    return node::connect_nodes(left, right, auth, try_multi? master_lock : shared_multi_lock());
   }
 
-  virtual shared_node find_node(const index_type &index) {
+  virtual bool disconnect_nodes(shared_node left, shared_node right, auth_type auth,
+    bool try_multi = true) {
+    //NOTE: this doesn't use 'find_node' so that error returns only pertain to
+    //failed lock operations
+    return node::disconnect_nodes(left, right, auth, try_multi? master_lock : shared_multi_lock());
+  }
+
+  virtual shared_node find_node(const index_type &index, auth_type auth) {
+    assert(master_lock.get());
+    //(this keeps 'all_data' from being changed)
+    lc::multi_lock_base::read_proxy protect_read = master_lock->get_write_auth(auth);
+    if (!protect_read) return shared_node();
     //NOTE: this doesn't have side-effects!
     typename node_map::iterator found = all_nodes.find(index);
     //NOTE: the line below must not have side-effects!
@@ -230,11 +237,13 @@ public:
   }
 
   virtual ~graph() {
+    auth_type auth(new lc::max_auth);
     for (typename node_map::iterator current = all_nodes.begin(), end = all_nodes.end();
          current != end; ++current) {
       assert(current->second.get());
       //NOTE: if it's already locked, that's a serious problem here
-      typename node::protected_node::write_proxy write = current->second->get_write(false);
+      //NOTE: auth. is only used to appease ordered locks
+      typename node::protected_node::write_proxy write = current->second->get_write_auth(auth, false);
       assert(write);
       //NOTE: doing this prevents a circular reference memory leak
       write->out.clear();
@@ -270,14 +279,18 @@ protected:
   template <class Func, class ... Args>
   bool change_node(const index_type &index, auth_type auth, Func func, Args ... args) {
     assert(master_lock.get());
-    lc::multi_lock::write_proxy multi = master_lock->get_write_auth(auth);
-    if (!multi) return false;
-    shared_node old_node = this->find_node(index);
+    shared_node old_node = this->find_node(index, auth);
     if (old_node) {
+      //(boot off all other locks)
+      lc::multi_lock::write_proxy protect_write = master_lock->get_write_auth(auth);
+      if (!protect_write) return false;
       //NOTE: these should never fail if 'master_lock' is used properly
       if (!this->remove_edges(old_node, &node::out, &node::in, auth)) return false;
       if (!this->remove_edges(old_node, &node::in, &node::out, auth)) return false;
     }
+    //(prevent a master lock)
+    lc::multi_lock_base::read_proxy protect_read = master_lock->get_write_auth(auth);
+    if (!protect_read) return false;
     //NOTE: if this results in destruction of the old node, it shouldn't have
     //any locks on it that will cause problems
     (*func)(all_nodes, index, args...);
@@ -355,16 +368,17 @@ struct tagged_value {
 
 
 typedef graph <int, tagged_value> int_graph;
-typedef lc::locking_container <int_graph::node, lc::w_lock> locking_node;
+//NOTE: using an ordered lock allows adding/removing edges without using the master lock
+typedef lc::locking_container <int_graph::node, lc::ordered_lock <lc::rw_lock> > locking_node;
 
 
 int main() {
+  int       graph_size = 10;
   int_graph main_graph;
-
   auth_type main_auth(locking_node::new_auth());
 
-  for (int i = 0; i < 10; i++) {
-    if (!main_graph.insert_node(i, int_graph::shared_node(new locking_node(tagged_value(i))), main_auth)) {
+  for (int i = 0; i < graph_size; i++) {
+    if (!main_graph.insert_node(i, int_graph::shared_node(new locking_node(tagged_value(i), i + 1)), main_auth)) {
       fprintf(stderr, "could not add node %i\n", i);
       return 1;
     } else {
@@ -372,15 +386,16 @@ int main() {
     }
   }
 
-  for (int i = 0; i < 10; i++) {
-    int from = i, to = (i + 1) % 10;
-    int_graph::shared_node left  = main_graph.find_node(from);
-    int_graph::shared_node right = main_graph.find_node(to);
+  for (int i = 0; i < graph_size; i++) {
+    int from = i, to = (i + 1) % graph_size;
+    int_graph::shared_node left  = main_graph.find_node(from, main_auth);
+    int_graph::shared_node right = main_graph.find_node(to,   main_auth);
     if (!left || !right) {
       fprintf(stderr, "error finding nodes\n");
       return 1;
     }
-    if (!main_graph.connect_nodes(left, right, main_auth)) {
+    //NOTE: 'false' means we don't wait for a multi-lock (because of ordered locks)
+    if (!main_graph.connect_nodes(left, right, main_auth, false)) {
       fprintf(stderr, "could not connect node %i to node %i\n", from, to);
       return 1;
     } else {
@@ -390,7 +405,7 @@ int main() {
 
   print_graph(main_graph, main_auth, &tagged_value::get_tag);
 
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < graph_size; i++) {
     int remove = i;
     if (!main_graph.erase_node(remove, main_auth)) {
       fprintf(stderr, "could not erase node %i\n", remove);
