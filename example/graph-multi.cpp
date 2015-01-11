@@ -164,7 +164,8 @@ struct graph_head {
 
   virtual shared_node get_graph_head() = 0;
 
-  virtual typename lc::multi_lock_base::write_proxy get_master_lock(auth_type auth) = 0;
+  virtual typename lc::multi_lock_base::write_proxy get_master_lock(auth_type auth)   = 0;
+  virtual typename lc::multi_lock_base::read_proxy  block_master_lock(auth_type auth) = 0;
   virtual shared_multi_lock show_master_lock() = 0;
 
   virtual inline ~graph_head() {}
@@ -181,6 +182,7 @@ public:
   using typename base::shared_node;
   typedef Index                              index_type;
   typedef std::map <index_type, shared_node> node_map;
+  typedef typename node_map::iterator        iterator;
 
   graph() : master_lock(new lc::multi_lock) {}
 
@@ -197,9 +199,23 @@ public:
     return master_lock? master_lock->get_write_auth(auth) : lc::multi_lock_base::write_proxy();
   }
 
+  typename lc::multi_lock_base::read_proxy block_master_lock(auth_type auth) {
+    return master_lock? master_lock->get_read_auth(auth) : lc::multi_lock_base::read_proxy();
+  }
+
   shared_multi_lock show_master_lock() {
     assert(master_lock.get());
     return master_lock;
+  }
+
+  inline iterator begin(auth_type auth) {
+    //NOTE: this is just a hasty validation; it provides no actual protection
+    if (!this->block_master_lock(auth)) return all_nodes.end();
+    return all_nodes.begin();
+  }
+
+  inline iterator end() {
+    return all_nodes.end();
   }
 
   virtual bool connect_nodes(shared_node left, shared_node right, auth_type auth,
@@ -355,6 +371,28 @@ static bool print_graph(graph_head <Type> &the_graph, auth_type auth,
 }
 
 
+template <class Index, class Type, class Result = const Type&>
+static bool print_nodes(graph <Index, Type> &the_graph, auth_type auth,
+  Result(*convert)(const Type&) = &identity <Type>) {
+  typedef graph <Index, Type> graph_type;
+
+  lc::multi_lock_base::read_proxy multi = the_graph.block_master_lock(auth);
+  if (!multi) return false;
+
+  for (typename graph_type::iterator current = the_graph.begin(auth), end = the_graph.end();
+       current != end; ++current) {
+    assert(current->second.get());
+    typename graph_type::protected_node::read_proxy read =
+      current->second->get_read_multi(*the_graph.show_master_lock(), auth, false);
+    //NOTE: this should only happen if we have other locks outside of this call
+    if (!read) return false;
+    std::cout << "node " << current->first << ": " << (*convert)(read->obj) << std::endl;
+  }
+
+  return true;
+}
+
+
 struct tagged_value {
   tagged_value(int t, int v = 0) : tag(t), value(v) {}
 
@@ -412,7 +450,7 @@ int main() {
       return 1;
     } else {
       fprintf(stderr, "erased node %i\n", remove);
-      print_graph(main_graph, main_auth, &tagged_value::get_tag);
+      print_nodes(main_graph, main_auth, &tagged_value::get_tag);
     }
   }
 }
