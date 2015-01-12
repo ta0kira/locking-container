@@ -208,14 +208,19 @@ public:
     return master_lock;
   }
 
-  inline iterator begin(auth_type auth) {
-    //NOTE: this is just a hasty validation; it provides no actual protection
-    if (!this->block_master_lock(auth)) return all_nodes.end();
-    return all_nodes.begin();
-  }
-
-  inline iterator end() {
-    return all_nodes.end();
+  template <class Func, class ... Args>
+  bool iterate_nodes(auth_type auth, Func func, Args ... args) {
+    lc::multi_lock_base::read_proxy protect_read = this->block_master_lock(auth);
+    if (!protect_read) return false;
+    for (iterator current = all_nodes.begin(), end = all_nodes.end();
+         current != end; ++current) {
+      assert(current->second.get());
+      typename protected_node::read_proxy read =
+        current->second->get_read_multi(*master_lock, auth);
+      if (!read) return false;
+      (*func)(current->first, *read, args...);
+    }
+    return true;
   }
 
   virtual bool connect_nodes(shared_node left, shared_node right, auth_type auth,
@@ -372,24 +377,9 @@ static bool print_graph(graph_head <Type> &the_graph, auth_type auth,
 
 
 template <class Index, class Type, class Result = const Type&>
-static bool print_nodes(graph <Index, Type> &the_graph, auth_type auth,
+static void print_node(const Index &index, const graph_node <Type> &the_node,
   Result(*convert)(const Type&) = &identity <Type>) {
-  typedef graph <Index, Type> graph_type;
-
-  lc::multi_lock_base::read_proxy multi = the_graph.block_master_lock(auth);
-  if (!multi) return false;
-
-  for (typename graph_type::iterator current = the_graph.begin(auth), end = the_graph.end();
-       current != end; ++current) {
-    assert(current->second.get());
-    typename graph_type::protected_node::read_proxy read =
-      current->second->get_read_multi(*the_graph.show_master_lock(), auth, false);
-    //NOTE: this should only happen if we have other locks outside of this call
-    if (!read) return false;
-    std::cout << "node " << current->first << ": " << (*convert)(read->obj) << std::endl;
-  }
-
-  return true;
+    std::cout << "node " << index << ": " << (*convert)(the_node.obj) << std::endl;
 }
 
 
@@ -450,7 +440,7 @@ int main() {
       return 1;
     } else {
       fprintf(stderr, "erased node %i\n", remove);
-      print_nodes(main_graph, main_auth, &tagged_value::get_tag);
+      main_graph.iterate_nodes(main_auth, &print_node <int, tagged_value, int>, &tagged_value::get_tag);
     }
   }
 }
