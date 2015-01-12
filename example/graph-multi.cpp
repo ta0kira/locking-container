@@ -59,7 +59,7 @@
 
 
 typedef lc::lock_auth_base::auth_type auth_type;
-typedef lc::shared_multi_lock         shared_multi_lock;
+typedef lc::shared_meta_lock          shared_meta_lock;
 
 
 template <class Type>
@@ -82,13 +82,13 @@ private:
 
 public:
   static inline bool connect_nodes(shared_node left, shared_node right,
-    auth_type auth = auth_type(), shared_multi_lock master_lock = shared_multi_lock(),
+    auth_type auth = auth_type(), shared_meta_lock master_lock = shared_meta_lock(),
     bool try_multi = true) {
     return change_connection_common(&insert_edge, left, right, auth, master_lock, try_multi);
   }
 
   static inline bool disconnect_nodes(shared_node left, shared_node right,
-    auth_type auth = auth_type(), shared_multi_lock master_lock = shared_multi_lock(),
+    auth_type auth = auth_type(), shared_meta_lock master_lock = shared_meta_lock(),
     bool try_multi = true) {
     return change_connection_common(&erase_edge, left, right, auth, master_lock, try_multi);
   }
@@ -109,7 +109,7 @@ protected:
   }
 
   static void get_two_writes(shared_node left, shared_node right, auth_type auth,
-    shared_multi_lock master_lock, typename protected_node::write_proxy &write1,
+    shared_meta_lock master_lock, typename protected_node::write_proxy &write1,
     typename protected_node::write_proxy &write2, bool block = true) {
     assert(left.get() && right.get());
     bool order = left->get_order() < right->get_order();
@@ -137,9 +137,9 @@ protected:
 
   template <class Func>
   static bool change_connection_common(Func func, shared_node left, shared_node right,
-    auth_type auth = auth_type(), shared_multi_lock master_lock = shared_multi_lock(),
+    auth_type auth = auth_type(), shared_meta_lock master_lock = shared_meta_lock(),
     bool try_multi = true) {
-    lc::multi_lock::write_proxy multi;
+    lc::meta_lock::write_proxy multi;
     if (try_multi && master_lock && !(multi = master_lock->get_write_auth(auth))) return false;
 
     typename protected_node::write_proxy write_l, write_r;
@@ -164,9 +164,9 @@ struct graph_head {
 
   virtual shared_node get_graph_head() = 0;
 
-  virtual typename lc::multi_lock_base::write_proxy get_master_lock(auth_type auth)   = 0;
-  virtual typename lc::multi_lock_base::read_proxy  block_master_lock(auth_type auth) = 0;
-  virtual shared_multi_lock show_master_lock() = 0;
+  virtual typename lc::meta_lock_base::write_proxy get_master_lock(auth_type auth)   = 0;
+  virtual typename lc::meta_lock_base::read_proxy  block_master_lock(auth_type auth) = 0;
+  virtual shared_meta_lock show_master_lock() = 0;
 
   virtual inline ~graph_head() {}
 };
@@ -184,7 +184,7 @@ public:
   typedef std::map <index_type, shared_node> node_map;
   typedef typename node_map::iterator        iterator;
 
-  graph() : master_lock(new lc::multi_lock) {}
+  graph() : master_lock(new lc::meta_lock) {}
 
 private:
   graph(const graph&);
@@ -195,22 +195,22 @@ public:
     return all_nodes.size()? all_nodes.begin()->second : shared_node();
   }
 
-  typename lc::multi_lock_base::write_proxy get_master_lock(auth_type auth) {
-    return master_lock? master_lock->get_write_auth(auth) : lc::multi_lock_base::write_proxy();
+  typename lc::meta_lock_base::write_proxy get_master_lock(auth_type auth) {
+    return master_lock? master_lock->get_write_auth(auth) : lc::meta_lock_base::write_proxy();
   }
 
-  typename lc::multi_lock_base::read_proxy block_master_lock(auth_type auth) {
-    return master_lock? master_lock->get_read_auth(auth) : lc::multi_lock_base::read_proxy();
+  typename lc::meta_lock_base::read_proxy block_master_lock(auth_type auth) {
+    return master_lock? master_lock->get_read_auth(auth) : lc::meta_lock_base::read_proxy();
   }
 
-  shared_multi_lock show_master_lock() {
+  shared_meta_lock show_master_lock() {
     assert(master_lock.get());
     return master_lock;
   }
 
   template <class Func, class ... Args>
   bool iterate_nodes(auth_type auth, Func func, Args ... args) {
-    lc::multi_lock_base::read_proxy protect_read = this->block_master_lock(auth);
+    lc::meta_lock_base::read_proxy protect_read = this->block_master_lock(auth);
     if (!protect_read) return false;
     for (iterator current = all_nodes.begin(), end = all_nodes.end();
          current != end; ++current) {
@@ -227,20 +227,20 @@ public:
     bool try_multi = true) {
     //NOTE: this doesn't use 'find_node' so that error returns only pertain to
     //failed lock operations
-    return node::connect_nodes(left, right, auth, try_multi? master_lock : shared_multi_lock());
+    return node::connect_nodes(left, right, auth, try_multi? master_lock : shared_meta_lock());
   }
 
   virtual bool disconnect_nodes(shared_node left, shared_node right, auth_type auth,
     bool try_multi = true) {
     //NOTE: this doesn't use 'find_node' so that error returns only pertain to
     //failed lock operations
-    return node::disconnect_nodes(left, right, auth, try_multi? master_lock : shared_multi_lock());
+    return node::disconnect_nodes(left, right, auth, try_multi? master_lock : shared_meta_lock());
   }
 
   virtual shared_node find_node(const index_type &index, auth_type auth) {
     assert(master_lock.get());
     //(this keeps 'all_data' from being changed)
-    lc::multi_lock_base::read_proxy protect_read = this->block_master_lock(auth);
+    lc::meta_lock_base::read_proxy protect_read = this->block_master_lock(auth);
     if (!protect_read) return shared_node();
     //NOTE: this doesn't have side-effects!
     typename node_map::iterator found = all_nodes.find(index);
@@ -302,7 +302,7 @@ protected:
     assert(master_lock.get());
     shared_node old_node = this->find_node(index, auth);
     //NOTE: this is in the outer scope so the lock is continuous
-    lc::multi_lock::write_proxy protect_write;
+    lc::meta_lock::write_proxy protect_write;
     if (old_node) {
       //(boot off all other locks)
       protect_write = this->get_master_lock(auth);
@@ -313,7 +313,7 @@ protected:
     }
     //(prevent a master lock)
     //NOTE: this is fine if 'auth' already holds the master lock
-    lc::multi_lock_base::read_proxy protect_read = this->block_master_lock(auth);
+    lc::meta_lock_base::read_proxy protect_read = this->block_master_lock(auth);
     if (!protect_read) return false;
     //NOTE: if this results in destruction of the old node, it shouldn't have
     //any locks on it that will cause problems
@@ -322,7 +322,7 @@ protected:
   }
 
 private:
-  shared_multi_lock master_lock;
+  shared_meta_lock master_lock;
   node_map          all_nodes;
 };
 
@@ -340,7 +340,7 @@ static bool print_graph(graph_head <Type> &the_graph, auth_type auth,
   typedef std::queue <typename graph_type::protected_node::write_proxy> proxy_queue;
   proxy_queue locked, pending;
 
-  lc::multi_lock_base::write_proxy multi = the_graph.get_master_lock(auth);
+  lc::meta_lock_base::write_proxy multi = the_graph.get_master_lock(auth);
   if (!multi) return false;
 
   typename graph_type::shared_node head = the_graph.get_graph_head();

@@ -330,8 +330,8 @@ class null_container;
 template <>
 class object_proxy <void> : public object_proxy_base <void> {
 private:
-  friend class multi_lock_write_proxy;
-  friend class multi_lock_read_proxy;
+  friend class meta_lock_write_proxy;
+  friend class meta_lock_read_proxy;
 
   object_proxy(bool value, lock_base *new_locks, lock_auth_base *new_auth,
     bool read, bool block, lock_base *new_multi) :
@@ -355,14 +355,14 @@ public:
 };
 
 
-class multi_lock_write_proxy : public object_proxy <void> {
-  friend class multi_lock;
+class meta_lock_write_proxy : public object_proxy <void> {
+  friend class meta_lock;
   using object_proxy <void> ::object_proxy;
 };
 
 
-class multi_lock_read_proxy : public object_proxy <void> {
-  friend class multi_lock;
+class meta_lock_read_proxy : public object_proxy <void> {
+  friend class meta_lock;
   using object_proxy <void> ::object_proxy;
 };
 

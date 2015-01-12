@@ -1,7 +1,7 @@
 #include "locks.hpp"
 #include "lock-auth.hpp"
 #include "object-proxy.hpp"
-#include "multi-lock.hpp"
+#include "meta-lock.hpp"
 
 namespace lc {
 
@@ -134,7 +134,7 @@ namespace lc {
 
   r_lock::count_type r_lock::lock(lock_auth_base *auth, bool read, bool /*block*/, bool test) {
     if (!read) return -1;
-    //NOTE: this container can still be a part of a deadlock if 'multi_lock' is used!
+    //NOTE: this container can still be a part of a deadlock if 'meta_lock' is used!
     lock_data l(this, false, true, false, false, this->get_order());
     if (!register_or_test_auth(auth, l, test)) return -1;
     //NOTE: this is atomic
@@ -415,13 +415,13 @@ namespace lc {
 
 //multi-lock.hpp
 
-  multi_lock_base::write_proxy multi_lock_base::get_write_auth(auth_type &authorization,
+  meta_lock_base::write_proxy meta_lock_base::get_write_auth(auth_type &authorization,
     bool block) {
     if (!authorization) return write_proxy();
     return this->get_write_auth(authorization.get(), block);
   }
 
-  multi_lock_base::read_proxy multi_lock_base::get_read_auth(auth_type &authorization,
+  meta_lock_base::read_proxy meta_lock_base::get_read_auth(auth_type &authorization,
     bool block) {
     if (!authorization) return read_proxy();
     return this->get_read_auth(authorization.get(), block);

@@ -425,9 +425,9 @@ each other (e.g., set 'n' above to a thread number).
 
 The second solution is possibly overkill in the other direction. Suppose, in
 addition to the global objects 'my_int0' and 'my_int1', there is a global
-'lc::multi_lock' object that serves as the master lock:
+'lc::meta_lock' object that serves as the master lock:
 
-  lc::multi_lock master_lock;
+  lc::meta_lock master_lock;
 
 Solution 1 would be modified as follows to implement the multi-locking solution:
 
@@ -435,7 +435,7 @@ Solution 1 would be modified as follows to implement the multi-locking solution:
 
   //...
 
-  lc::multi_lock::write_proxy multi = master_lock.get_write_auth(auth);
+  lc::meta_lock::write_proxy multi = master_lock.get_write_auth(auth);
   if (!multi) /*probably a fatal error*/;
 
   int_base::write_proxy write0 = my_int0.get_write_multi(master_lock, auth);
@@ -454,10 +454,10 @@ requests. If they fail, it's not going to get any better.
 
 The most important point to make regarding this solution is that it requires
 that all other lock operations use 'get_read_multi' and 'get_write_multi' with
-the same 'lc::multi_lock' object! Even for operations that don't require
-multiple write locks, or a write lock with one or more read locks. The entire
-purpose of the master lock is to ensure that all other locks are released when a
-thread requests a lock on the master lock.
+the same 'lc::meta_lock' object! Even for operations that don't require multiple
+write locks, or a write lock with one or more read locks. The entire purpose of
+the master lock is to ensure that all other locks are released when a thread
+requests a lock on the master lock.
 
 Here is a more detailed explanation of how it works. For normal read and write
 operations, we simply use:
@@ -469,11 +469,11 @@ operations, we simply use:
   int_base::read_proxy read0 = my_int0.get_read_multi(master_lock, auth);
 
 Every time this sort of lock is made, a read lock is taken out on 'master_lock'.
-Since 'lc::multi_lock' contains a 'lc::rw_lock', 'master_lock' can handle and
+Since 'lc::meta_lock' contains a 'lc::rw_lock', 'master_lock' can handle and
 unlimited number of read locks at once. Now, suppose a thread wants a multi-
 lock, which is obtained using a write lock on 'master_lock':
 
-  lc::multi_lock::write_proxy multi = master_lock.get_write_auth(auth);
+  lc::meta_lock::write_proxy multi = master_lock.get_write_auth(auth);
 
 Here we are requesting a write lock on a object with a 'lc::rw_lock'. When this
 happens, the call blocks until there are no readers, and new read operations are
@@ -506,12 +506,12 @@ again.
 
 Alternatively, suppose you don't want a multi-lock, but you want to wait until
 no multi-lock is waiting, and then prevent a new multi-lock from happening. This
-is useful in cases where the the 'lc::multi_lock' actually serves as a lock for
+is useful in cases where the the 'lc::meta_lock' actually serves as a lock for
 some larger aggregate structure that isn't stored in a 'lc::locking_container'.
 (See example/graph-multi.cpp for a specific example.) To do this, you request a
 read lock, rather than a write lock:
 
-  lc::multi_lock::read_proxy protect_read = master_lock.get_read_auth(auth);
+  lc::meta_lock::read_proxy protect_read = master_lock.get_read_auth(auth);
 
 Provided 'auth' holds no other locks, this will block until there are no write
 locks pending/held on 'master_lock'. Note that the only protection provided here

@@ -30,8 +30,8 @@
  | POSSIBILITY OF SUCH DAMAGE.
  +~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-#ifndef lc_multi_lock_hpp
-#define lc_multi_lock_hpp
+#ifndef lc_meta_lock_hpp
+#define lc_meta_lock_hpp
 
 #include "locks.hpp"
 #include "object-proxy.hpp"
@@ -39,24 +39,24 @@
 namespace lc {
 
 
-class multi_lock_base;
-typedef std::shared_ptr <multi_lock_base> shared_multi_lock;
+class meta_lock_base;
+typedef std::shared_ptr <meta_lock_base> shared_meta_lock;
 
 
-/*! \class multi_lock_base
- *  \brief Base class for \ref multi_lock.
+/*! \class meta_lock_base
+ *  \brief Base class for \ref meta_lock.
  */
 
-class multi_lock_base {
+class meta_lock_base {
 public:
-  typedef multi_lock_write_proxy    write_proxy;
-  typedef multi_lock_read_proxy     read_proxy;
+  typedef meta_lock_write_proxy     write_proxy;
+  typedef meta_lock_read_proxy      read_proxy;
   typedef lock_auth_base::auth_type auth_type;
 
   virtual write_proxy get_write_auth(auth_type &authorization, bool block = true);
   virtual read_proxy  get_read_auth(auth_type &authorization,  bool block = true);
 
-  virtual inline ~multi_lock_base() {}
+  virtual inline ~meta_lock_base() {}
 
 protected:
   virtual write_proxy get_write_auth(lock_auth_base *authorization, bool block = true) = 0;
@@ -69,26 +69,26 @@ private:
 };
 
 
-/*! \class multi_lock
- *  \brief Empty container, used as a global multi-locking mechanism.
+/*! \class meta_lock
+ *  \brief Empty container, used as a global meta-locking mechanism.
  */
 
-class multi_lock : public multi_lock_base {
+class meta_lock : public meta_lock_base {
 private:
   typedef lock_auth <rw_lock> auth_base_type;
 
 public:
-  typedef multi_lock_base base;
+  typedef meta_lock_base base;
   using base::write_proxy;
   using base::read_proxy;
   using base::auth_type;
   using base::get_write_auth;
 
-  inline multi_lock() {}
+  inline meta_lock() {}
 
 private:
-  multi_lock(const multi_lock&);
-  multi_lock &operator = (const multi_lock&);
+  meta_lock(const meta_lock&);
+  meta_lock &operator = (const meta_lock&);
 
   inline write_proxy get_write_auth(lock_auth_base *authorization, bool block = true) {
     return write_proxy(true, &locks, authorization, false, block, NULL);
@@ -107,4 +107,4 @@ private:
 
 } //namespace lc
 
-#endif //lc_multi_lock_hpp
+#endif //lc_meta_lock_hpp

@@ -93,16 +93,16 @@ int main() {
 
   //use 'try_copy_container' to copy containers, with multi-locking
   //NOTE: normally every 'get_write_auth' and 'get_read_auth' above should be
-  //replaced with 'get_write_multi' and 'get_read_multi' so that 'multi_lock'
+  //replaced with 'get_write_multi' and 'get_read_multi' so that 'meta_lock'
   //keeps track of all of the locks held on 'data0' and 'data1'. this is so that
-  //'multi_lock' makes this call block until no other threads are accessing
+  //'meta_lock' makes this call block until no other threads are accessing
   //'data0' or 'data1'. (see ../test/unit.cpp for a more elaborate example.)
-  lc::multi_lock multi;
+  lc::meta_lock multi;
   bool success2 = try_copy_container(data0, data1, multi, auth);
   assert(success2);
 
-  //or, if this thread already holds a write lock on 'multi_lock'...
-  lc::multi_lock::write_proxy multi_write = multi.get_write_auth(auth);
+  //or, if this thread already holds a write lock on 'meta_lock'...
+  lc::meta_lock::write_proxy multi_write = multi.get_write_auth(auth);
   bool success3 = try_copy_container(data0, data1, multi, auth, true, false);
   assert(success3);
 }

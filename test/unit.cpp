@@ -88,7 +88,7 @@ struct philosopher_base {
   //TODO: add a condition where a write lock is used for "right"; this will be
   //necessary in order to test the lock-out exceptions used in 'rw_lock'
 
-  virtual lc::multi_lock::write_proxy      lock_multi() = 0;
+  virtual lc::meta_lock::write_proxy       lock_multi() = 0;
   virtual protected_chopstick::write_proxy write_left() = 0;
   virtual protected_chopstick::read_proxy  read_right() = 0;
 
@@ -115,7 +115,7 @@ struct philosopher_base {
       //NOTE: this should always succeed if multilocking is used; the return
       //value isn't important, because a 'NULL' should mean that we're not
       //using multilocking
-      lc::multi_lock::write_proxy multi = self->lock_multi();
+      lc::meta_lock::write_proxy multi = self->lock_multi();
       bool using_multi = multi;
 
       //NOTE: this should only fail if there's an incompatibility between the
@@ -159,14 +159,14 @@ class philosopher : public philosopher_base {
 public:
   philosopher(int n, chopstick_pointer l, chopstick_pointer r, pthread_barrier_t *b,
     lc::lock_auth_base::auth_type a = lc::lock_auth_base::auth_type(),
-    lc::shared_multi_lock m = lc::shared_multi_lock(), bool d = true) :
+    lc::shared_meta_lock m = lc::shared_meta_lock(), bool d = true) :
     number(n), deadlock(d), barrier(b), auth(a), multi(m), left(l), right(r) {
     assert(left.get() && right.get());
   }
 
-  lc::multi_lock::write_proxy lock_multi() {
+  lc::meta_lock::write_proxy lock_multi() {
     //(method 2 : methods 0, 1, & 3)
-    return multi? multi->get_write_auth(auth) : lc::multi_lock::write_proxy();
+    return multi? multi->get_write_auth(auth) : lc::meta_lock::write_proxy();
   }
 
   protected_chopstick::write_proxy write_left() {
@@ -223,7 +223,7 @@ protected:
   bool                          deadlock;
   pthread_barrier_t            *barrier;
   lc::lock_auth_base::auth_type auth;
-  lc::shared_multi_lock             multi;
+  lc::shared_meta_lock          multi;
   chopstick_pointer             left, right;
 };
 
@@ -237,7 +237,7 @@ static void deadlock_timeout(int sig);
 static void init_chopsticks(int lock_method, int lock_type, chopstick_set &chops);
 
 static void init_philosophers(int lock_method, int auth_type, chopstick_set &chops,
-  philosopher_set &phils, pthread_barrier_t *barrier, lc::shared_multi_lock multi,
+  philosopher_set &phils, pthread_barrier_t *barrier, lc::shared_meta_lock multi,
   bool deadlock);
 
 static void start_threads(thread_set &threads, philosopher_set &phils,
@@ -287,7 +287,7 @@ int main(int argc, char *argv[]) {
 
   philosopher_set   all_philosophers(thread_count);
   chopstick_set     all_chopsticks(thread_count);
-  lc::shared_multi_lock multi((lock_method == 2)? new lc::multi_lock : NULL);
+  lc::shared_meta_lock multi((lock_method == 2)? new lc::meta_lock : NULL);
   thread_set        all_threads(thread_count);
   pthread_barrier_t barrier;
   struct timespec   start, finish;
@@ -394,7 +394,7 @@ static void init_chopsticks(int lock_method, int lock_type, chopstick_set &chops
 
 
 static void init_philosophers(int lock_method, int auth_type, chopstick_set &chops,
-  philosopher_set &phils, pthread_barrier_t *barrier, lc::shared_multi_lock multi,
+  philosopher_set &phils, pthread_barrier_t *barrier, lc::shared_meta_lock multi,
   bool deadlock) {
   for (int i = 0; i < (signed) phils.size(); i++) {
     lc::lock_auth_base::auth_type new_auth;
