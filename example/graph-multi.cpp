@@ -240,7 +240,7 @@ public:
   virtual shared_node find_node(const index_type &index, auth_type auth) {
     assert(master_lock.get());
     //(this keeps 'all_data' from being changed)
-    lc::multi_lock_base::read_proxy protect_read = master_lock->get_write_auth(auth);
+    lc::multi_lock_base::read_proxy protect_read = this->block_master_lock(auth);
     if (!protect_read) return shared_node();
     //NOTE: this doesn't have side-effects!
     typename node_map::iterator found = all_nodes.find(index);
@@ -301,16 +301,19 @@ protected:
   bool change_node(const index_type &index, auth_type auth, Func func, Args ... args) {
     assert(master_lock.get());
     shared_node old_node = this->find_node(index, auth);
+    //NOTE: this is in the outer scope so the lock is continuous
+    lc::multi_lock::write_proxy protect_write;
     if (old_node) {
       //(boot off all other locks)
-      lc::multi_lock::write_proxy protect_write = master_lock->get_write_auth(auth);
+      protect_write = this->get_master_lock(auth);
       if (!protect_write) return false;
       //NOTE: these should never fail if 'master_lock' is used properly
       if (!this->remove_edges(old_node, &node::out, &node::in, auth)) return false;
       if (!this->remove_edges(old_node, &node::in, &node::out, auth)) return false;
     }
     //(prevent a master lock)
-    lc::multi_lock_base::read_proxy protect_read = master_lock->get_write_auth(auth);
+    //NOTE: this is fine if 'auth' already holds the master lock
+    lc::multi_lock_base::read_proxy protect_read = this->block_master_lock(auth);
     if (!protect_read) return false;
     //NOTE: if this results in destruction of the old node, it shouldn't have
     //any locks on it that will cause problems
@@ -405,12 +408,15 @@ int main() {
   int_graph main_graph;
   auth_type main_auth(locking_node::new_auth());
 
-  for (int i = 0; i < graph_size; i++) {
-    if (!main_graph.insert_node(i, int_graph::shared_node(new locking_node(tagged_value(i), i + 1)), main_auth)) {
-      fprintf(stderr, "could not add node %i\n", i);
-      return 1;
-    } else {
-      fprintf(stderr, "added node %i\n", i);
+  for (int x = 0; x < 1; x++) {
+    //(see what happens if we overwrite nodes with a second pass)
+    for (int i = 0; i < graph_size; i++) {
+      if (!main_graph.insert_node(i, int_graph::shared_node(new locking_node(tagged_value(i), i + 1)), main_auth)) {
+        fprintf(stderr, "could not add node %i\n", i);
+        return 1;
+      } else {
+        fprintf(stderr, "added node %i\n", i);
+      }
     }
   }
 
