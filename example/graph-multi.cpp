@@ -82,14 +82,14 @@ private:
 
 public:
   static inline bool connect_nodes(shared_node left, shared_node right,
-   auth_type auth = auth_type(), shared_multi_lock master_lock = shared_multi_lock(),
-   bool try_multi = true) {
+    auth_type auth = auth_type(), shared_multi_lock master_lock = shared_multi_lock(),
+    bool try_multi = true) {
     return change_connection_common(&insert_edge, left, right, auth, master_lock, try_multi);
   }
 
   static inline bool disconnect_nodes(shared_node left, shared_node right,
-   auth_type auth = auth_type(), shared_multi_lock master_lock = shared_multi_lock(),
-   bool try_multi = true) {
+    auth_type auth = auth_type(), shared_multi_lock master_lock = shared_multi_lock(),
+    bool try_multi = true) {
     return change_connection_common(&erase_edge, left, right, auth, master_lock, try_multi);
   }
 
@@ -157,10 +157,10 @@ protected:
 
 template <class Type>
 struct graph_head {
-  typedef graph_node <Type>              node;
-  typedef typename node::stored_type     stored_type;
-  typedef typename node::protected_node  protected_node;
-  typedef typename node::shared_node     shared_node;
+  typedef graph_node <Type>             node;
+  typedef typename node::stored_type    stored_type;
+  typedef typename node::protected_node protected_node;
+  typedef typename node::shared_node    shared_node;
 
   virtual shared_node get_graph_head() = 0;
 

@@ -49,9 +49,8 @@ typedef std::shared_ptr <multi_lock_base> shared_multi_lock;
 
 class multi_lock_base {
 public:
-  //TODO: change the proxy types so that they cause an error when mixed up
-  typedef object_proxy <void>       write_proxy;
-  typedef object_proxy <void>       read_proxy;
+  typedef multi_lock_write_proxy    write_proxy;
+  typedef multi_lock_read_proxy     read_proxy;
   typedef lock_auth_base::auth_type auth_type;
 
   virtual write_proxy get_write_auth(auth_type &authorization, bool block = true);
