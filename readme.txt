@@ -150,9 +150,8 @@ receives and subsequently returns write access to the object.
 
 'lc::r_lock': This lock type will allow multiple threads read access, but it
 will never allow a thread write access. This type of lock will never block.
-Unlike the other lock types, this type of lock won't count against an
-authorization object (see below) if one is used when obtaining a lock. This is
-because a lock of this type will never be involved in a deadlock.
+Even though a deadlock cannot happen directly using this deadlock, it can be
+involved in a deadlock if multi-locking is used (discussed later on).
 
 'lc::w_lock': This lock type will allow only one thread access at any given
 time, regardless of if it's for reading or writing. This lock is more efficient

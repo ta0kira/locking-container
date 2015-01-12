@@ -132,14 +132,11 @@ namespace lc {
 
   r_lock::r_lock() : readers(0) {}
 
-  r_lock::count_type r_lock::lock(lock_auth_base *auth, bool read, bool /*block*/,
-    bool /*test*/) {
+  r_lock::count_type r_lock::lock(lock_auth_base *auth, bool read, bool /*block*/, bool test) {
     if (!read) return -1;
-    //NOTE: because this container can't be a part of a deadlock, it's never
-    //considered in use and the lock isn't counted. the 'auth' check is entirely
-    //to allow for an auth. that denies all locks.
+    //NOTE: this container can still be a part of a deadlock if 'multi_lock' is used!
     lock_data l(this, false, true, false, false, this->get_order());
-    if (!register_or_test_auth(auth, l, true)) return -1;
+    if (!register_or_test_auth(auth, l, test)) return -1;
     //NOTE: this is atomic
     count_type new_readers = ++readers;
     //(check the copy!)
@@ -147,8 +144,12 @@ namespace lc {
     return new_readers;
   }
 
-  r_lock::count_type r_lock::unlock(lock_auth_base* /*auth*/, bool read, bool /*test*/) {
+  r_lock::count_type r_lock::unlock(lock_auth_base* auth, bool read, bool test) {
     if (!read) return -1;
+    if (!test) {
+      unlock_data l(this, read, this->get_order());
+      release_auth(auth, l);
+    }
     //NOTE: this is atomic
     count_type new_readers = --readers;
     //(check the copy!)
