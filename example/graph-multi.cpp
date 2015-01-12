@@ -408,15 +408,12 @@ int main() {
   int_graph main_graph;
   auth_type main_auth(locking_node::new_auth());
 
-  for (int x = 0; x < 2; x++) {
-    //(see what happens if we overwrite nodes with a second pass)
-    for (int i = 0; i < graph_size; i++) {
-      if (!main_graph.insert_node(i, int_graph::shared_node(new locking_node(tagged_value(i), i + 1)), main_auth)) {
-        fprintf(stderr, "could not add node %i\n", i);
-        return 1;
-      } else {
-        fprintf(stderr, "added node %i\n", i);
-      }
+  for (int i = 0; i < graph_size; i++) {
+    if (!main_graph.insert_node(i, int_graph::shared_node(new locking_node(tagged_value(i), i + 1)), main_auth)) {
+      fprintf(stderr, "could not add node %i\n", i);
+      return 1;
+    } else {
+      fprintf(stderr, "added node %i\n", i);
     }
   }
 
