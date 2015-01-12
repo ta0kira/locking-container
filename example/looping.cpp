@@ -24,8 +24,9 @@
 //(if you set either of these to 'false', the threads will gradually die off)
 #define READ_BLOCK  true
 #define WRITE_BLOCK true
-#define LOCK_TYPE   lc::rw_lock
-#define AUTH_TYPE   lc::rw_lock
+
+#define LOCK_TYPE lc::rw_lock
+#define AUTH_TYPE lc::rw_lock
 
 
 //the data being protected (initialize the 'int' to 'THREADS')
@@ -97,7 +98,7 @@ static void *thread(void *nv) {
   //with any lock type, but the behavior will be the stricter of the two
   lc::lock_auth_base::auth_type auth(new lc::lock_auth <AUTH_TYPE>);
 
-  long n = (long) nv, counter = 0;
+  long n = (long) nv, match = 0, fail_r0 = 0, fail_w1 = 0, fail_r2 = 0, success_r2 = 0;
   struct timespec wait = { 0, (10 + n) * 10 * 1000 * 1000 };
   nanosleep(&wait, NULL);
 
@@ -107,37 +108,49 @@ static void *thread(void *nv) {
     //read a bunch of times
 
     for (int i = 0; i < THREADS + n; i++) {
-      send_output("?read0 %li\n", n);
-      protected_int::read_proxy read0 = my_data0.get_read_auth(auth, READ_BLOCK);
-      if (!read0) {
-        send_output("!read0 %li\n", n);
-        return NULL;
-      }
-
-      send_output("+read0 %li (%i) -> %i\n", n, read0.last_lock_count(), *read0);
-      if (*read0 < 0) {
-        send_output("counter %li %i\n", n, counter);
-        return NULL;
-      }
-      nanosleep(&wait, NULL);
-
-      //NOTE: this should block unless a writer is being locked out (note that
-      //if 'lc::w_lock' is used, a read request uses a write lock)
       send_output("?read1 %li\n", n);
       protected_int::read_proxy read1 = my_data1.get_read_auth(auth, READ_BLOCK);
       if (!read1) {
         send_output("!read1 %li\n", n);
-      } else {
-        send_output("+read1 %li (%i) -> %i\n", n, read1.last_lock_count(), *read1);
-        //(sort of like a contest, to see how many times each thread reads its own number)
-        if (*read1 == n) ++counter;
-        nanosleep(&wait, NULL);
-        read1.clear();
-        send_output("-read1 %li\n", n);
+        return NULL;
       }
 
-      read0.clear();
-      send_output("-read0 %li\n", n);
+      send_output("+read1 %li (%i) -> %i\n", n, read1.last_lock_count(), *read1);
+      nanosleep(&wait, NULL);
+
+      //NOTE: this should block unless a writer is being locked out (note that
+      //if 'lc::w_lock' is used, a read request uses a write lock)
+      send_output("?read0 %li\n", n);
+      protected_int::read_proxy read0 = my_data0.get_read_auth(auth, READ_BLOCK);
+      if (!read0) {
+        ++fail_r0;
+        send_output("!read0 %li\n", n);
+      } else {
+        send_output("+read0 %li (%i) -> %i\n", n, read0.last_lock_count(), *read0);
+        if (*read0 < 0) break;
+        //(sort of like a contest, to see how many times each thread reads its own number)
+        if (*read0 == 0) ++match;
+        nanosleep(&wait, NULL);
+
+        //if a writer is waiting, this is really asking for a (potential) deadlock
+        send_output("?read2 %li\n", n);
+        protected_int::read_proxy read2 = my_data0.get_read_auth(auth, READ_BLOCK);
+        if (!read2) {
+          ++fail_r2;
+          send_output("!read2 %li\n", n);
+        } else {
+          ++success_r2;
+          send_output("+read2 %li\n", n);
+          read2.clear();
+          send_output("-read2 %li\n", n);
+        }
+
+        read0.clear();
+        send_output("-read0 %li\n", n);
+      }
+
+      read1.clear();
+      send_output("-read1 %li\n", n);
       nanosleep(&wait, NULL);
     }
 
@@ -152,7 +165,8 @@ static void *thread(void *nv) {
 
     send_output("+write0 %li (%i)\n", n, write0.last_lock_count());
     if (*write0 < 0) {
-      send_output("counter %li %i\n", n, counter);
+      send_output("counters %li %i %i %i %i %i\n", n, match,
+        fail_r0, fail_w1, fail_r2, success_r2 );
       return NULL;
     }
     *write0 = n;
@@ -160,8 +174,9 @@ static void *thread(void *nv) {
 
     //NOTE: this will never block because 'auth' already holds a write lock
     send_output("?write1 %li\n", n);
-    protected_int::write_proxy write1 = my_data1.get_write_auth(auth, READ_BLOCK);
+    protected_int::write_proxy write1 = my_data1.get_write_auth(auth, WRITE_BLOCK);
     if (!write1) {
+      ++fail_w1;
       send_output("!write1 %li\n", n);
     } else {
       *write1 = *write0;
