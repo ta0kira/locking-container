@@ -309,11 +309,20 @@ exceptions are made:
      and the calling thread holds the write lock on that container and it's
      requesting a read lock, the lock will be allowed, even if it violates
      lock-count restrictions otherwise imposed by the auth. object. count
-     restrictions.
+     restrictions, or the "Lockout" Exception above.
 
 Note that the first two exceptions are not possible with 'lc::dumb_lock' locks
 because the operation will always potentially block, and there is no way to know
 if another thread is already blocking for a lock.
+
+Given the exceptions above, the main difference between the authorization types,
+as far as blocking, relates to what happens when the call must block and no
+other thread is currently locked out. In such a situation, if the caller holds a
+write lock (according to the authorization object) or a write lock is currently
+being requested, the lock will be rejected. Otherwise (i.e., the caller only
+holds read locks and read lock is being requested), the call will be allowed to
+block. The difference in behavior therefore comes down to whether or not the
+authorization object tracks read and/or write locks.
 
 
 ----- Multiple Locks -----
@@ -561,7 +570,10 @@ unordered counterparts, except they are more liberal about allowing locks when
 ordering rules are respected; the restrictions are a subset of those used for
 unordered locks. If an ordered authorization object is used to lock an unordered
 lock, or an ordered lock with order 0, the authorization will revert to the more
-restrictive unordered rules until the unordered lock is released.
+restrictive unordered rules until the unordered lock is released. In terms of
+the exceptions to authorization rules discussed earlier, ordered locking causes
+the "Lockout" Exception to never happen, and it causes the "Must Block"
+Exception to always happen.
 
 
 ***** Scoping Concerns *****
