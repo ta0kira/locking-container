@@ -490,13 +490,12 @@ multi-locking thing works. What happens here depends on what else 'auth2' is
 associated with at the time. If 'auth2' has other locks, then this call should
 fail, because it's very possible that the other lock held by 'auth2' is what's
 causing the write lock on 'master_lock' to block. In that case, we need to go
-back to Solution 1 (for situations where multiple read locks would otherwise
-work) by clearing all locks held, waiting, and retrying. In other words, with
-the multi-locking technique there are potential (but prevented!) deadlocks even
-when you're requesting multiple read locks, so your code should allow for
-retrying if a second read lock fails. On the other hand, if 'auth2' currently
-holds no other locks, the call above should block until the multi-lock operation
-completes and the write lock on 'master_lock' is released.
+back to Solution 1 by clearing all locks held, waiting, and retrying. In other
+words, with the multi-locking technique there are potential (but prevented!)
+deadlocks even when you're requesting multiple read locks, so your code should
+allow for retrying if a second read lock fails. On the other hand, if 'auth2'
+currently holds no other locks, the call above should block until the multi-lock
+operation completes and the write lock on 'master_lock' is released.
 
 For the multi-locking thread, it is very important for it to release the write
 lock as soon as it obtains all of the locks it needs, i.e., before operating on
@@ -570,10 +569,10 @@ unordered counterparts, except they are more liberal about allowing locks when
 ordering rules are respected; the restrictions are a subset of those used for
 unordered locks. If an ordered authorization object is used to lock an unordered
 lock, or an ordered lock with order 0, the authorization will revert to the more
-restrictive unordered rules until the unordered lock is released. In terms of
-the exceptions to authorization rules discussed earlier, ordered locking causes
-the "Lockout" Exception to never happen, and it causes the "Must Block"
-Exception to always happen.
+restrictive unordered rules until the unordered lock is released. In general,
+when a thread uses ordered locking, the authorization object allows all lock
+requests to block, regardless of locks currently held. (The two exceptions are
+with the auth. objects corresponding to 'lc::dumb_lock' and 'lc::broken_lock'.)
 
 
 ***** Scoping Concerns *****

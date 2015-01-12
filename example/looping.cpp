@@ -1,5 +1,6 @@
 /* This is mostly a test of deadlock prevention with loops that use both
- * multiple read locks at once, and write locks.
+ * multiple read locks at once, and write locks. This definitely has way too
+ * much hard-coding; eventually I'll fix that and use command-line arguments.
  *
  * Suggested compilation command:
  *   c++ -Wall -pedantic -std=c++11 -O2 -I../include looping.cpp -o looping -lpthread
@@ -24,14 +25,17 @@
 //(if you set either of these to 'false', the threads will gradually die off)
 #define READ_BLOCK  true
 #define WRITE_BLOCK true
-
-#define LOCK_TYPE lc::rw_lock
-#define AUTH_TYPE lc::rw_lock
+//TODO: make these into command-line arguments (specifically, the latter two)
+#define LOCK_TYPE0 lc::rw_lock
+#define LOCK_TYPE1 lc::rw_lock
+#define AUTH_TYPE0 lc::r_lock
+#define AUTH_TYPE1 lc::w_lock
 
 
 //the data being protected (initialize the 'int' to 'THREADS')
-typedef lc::locking_container <int, LOCK_TYPE> protected_int;
-static protected_int my_data0(THREADS), my_data1;
+typedef lc::locking_container_base <int> protected_int;
+lc::locking_container <int, LOCK_TYPE0> my_data0(THREADS);
+lc::locking_container <int, LOCK_TYPE1> my_data1;
 
 static void send_output(const char *format, ...);
 
@@ -93,10 +97,10 @@ static void *thread(void *nv) {
   //(cancelation can be messy...)
   if (pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL) != 0) return NULL;
 
-  //get an authorization object, to prevent deadlocks
-  //NOTE: for the most part you should be able to use any authorization type
-  //with any lock type, but the behavior will be the stricter of the two
-  lc::lock_auth_base::auth_type auth(new lc::lock_auth <AUTH_TYPE>);
+  //NOTE: normally only one auth. should be used; this is just to simulate
+  //different threads having different auth. types
+  lc::lock_auth_base::auth_type auth0(new lc::lock_auth <AUTH_TYPE0>);
+  lc::lock_auth_base::auth_type auth1(new lc::lock_auth <AUTH_TYPE1>);
 
   long n = (long) nv, match = 0, fail_r0 = 0, fail_w1 = 0, fail_r2 = 0, success_r2 = 0;
   struct timespec wait = { 0, (10 + n) * 10 * 1000 * 1000 };
@@ -109,7 +113,7 @@ static void *thread(void *nv) {
 
     for (int i = 0; i < THREADS + n; i++) {
       send_output("?read1 %li\n", n);
-      protected_int::read_proxy read1 = my_data1.get_read_auth(auth, READ_BLOCK);
+      protected_int::read_proxy read1 = my_data1.get_read_auth(auth0, READ_BLOCK);
       if (!read1) {
         send_output("!read1 %li\n", n);
         return NULL;
@@ -121,7 +125,7 @@ static void *thread(void *nv) {
       //NOTE: this should block unless a writer is being locked out (note that
       //if 'lc::w_lock' is used, a read request uses a write lock)
       send_output("?read0 %li\n", n);
-      protected_int::read_proxy read0 = my_data0.get_read_auth(auth, READ_BLOCK);
+      protected_int::read_proxy read0 = my_data0.get_read_auth(auth0, READ_BLOCK);
       if (!read0) {
         ++fail_r0;
         send_output("!read0 %li\n", n);
@@ -134,7 +138,7 @@ static void *thread(void *nv) {
 
         //if a writer is waiting, this is really asking for a (potential) deadlock
         send_output("?read2 %li\n", n);
-        protected_int::read_proxy read2 = my_data0.get_read_auth(auth, READ_BLOCK);
+        protected_int::read_proxy read2 = my_data0.get_read_auth(auth0, READ_BLOCK);
         if (!read2) {
           ++fail_r2;
           send_output("!read2 %li\n", n);
@@ -154,10 +158,16 @@ static void *thread(void *nv) {
       nanosleep(&wait, NULL);
     }
 
+    //NOTE: pretend like 'auth1' was being used all along; this just simulates
+    //other threads that are using different auth. types, and it allows testing
+    //of 'lc::lock_auth <lc::r_lock>' in the loop above
+
+    assert(!auth0->reading_count() && !auth0->writing_count());
+
     //write once
 
     send_output("?write0 %li\n", n);
-    protected_int::write_proxy write0 = my_data0.get_write_auth(auth, WRITE_BLOCK);
+    protected_int::write_proxy write0 = my_data0.get_write_auth(auth1, WRITE_BLOCK);
     if (!write0) {
       send_output("!write0 %li\n", n);
       return NULL;
@@ -172,21 +182,36 @@ static void *thread(void *nv) {
     *write0 = n;
     nanosleep(&wait, NULL);
 
+    write0.clear();
+    send_output("-write0 %li\n", n);
+
+    //(switch to a read lock to see how the auth. behaves with read and write locks)
+
+    send_output("?read3 %li\n", n);
+    //NOTE: make sure this is 'auth1' used with 'my_data0'!
+    protected_int::read_proxy read3 = my_data0.get_read_auth(auth1, READ_BLOCK);
+    if (!read3) {
+      send_output("!read3 %li\n", n);
+      return NULL;
+    }
+
+    send_output("+read3 %li\n", n);
+
     //NOTE: this will never block because 'auth' already holds a write lock
     send_output("?write1 %li\n", n);
-    protected_int::write_proxy write1 = my_data1.get_write_auth(auth, WRITE_BLOCK);
+    protected_int::write_proxy write1 = my_data1.get_write_auth(auth1, WRITE_BLOCK);
     if (!write1) {
       ++fail_w1;
       send_output("!write1 %li\n", n);
     } else {
-      *write1 = *write0;
+      *write1 = *read3;
       nanosleep(&wait, NULL);
       write1.clear();
       send_output("-write1 %li\n", n);
     }
 
-    write0.clear();
-    send_output("-write0 %li\n", n);
+    read3.clear();
+    send_output("-read3 %li\n", n);
     nanosleep(&wait, NULL);
   }
 }
