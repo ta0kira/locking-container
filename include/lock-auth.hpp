@@ -441,7 +441,7 @@ class lock_auth <ordered_lock <dumb_lock> > : public lock_auth_ordered_lock <dum
 
 
 /*! An authorization type that should be acceptable for use with all lock types.*/
-typedef lock_auth <ordered_lock <rw_lock> > max_auth;
+typedef lock_auth <ordered_lock <rw_lock> > lock_auth_max;
 
 
 /*! \class lock_auth_broken_lock

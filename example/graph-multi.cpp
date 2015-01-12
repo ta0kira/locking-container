@@ -253,7 +253,7 @@ public:
   }
 
   virtual ~graph() {
-    auth_type auth(new lc::max_auth);
+    auth_type auth(new lc::lock_auth_max);
     for (typename node_map::iterator current = all_nodes.begin(), end = all_nodes.end();
          current != end; ++current) {
       assert(current->second.get());

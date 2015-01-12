@@ -459,7 +459,7 @@ static void get_results(thread_set &threads, chopstick_set &chops, pthread_barri
     pthread_join(threads[i], NULL);
   }
 
-  lc::lock_auth_base::auth_type auth(new lc::max_auth);
+  lc::lock_auth_base::auth_type auth(new lc::lock_auth_max);
 
   for (int i = 0; i < (signed) chops.size(); i++) {
     protected_chopstick::read_proxy read = chops[i]->get_read_auth(auth);
