@@ -407,7 +407,11 @@ protected:
     bool normal_rules = !l.order || unordered_locks ||
       (ordered_locks.size() && *ordered_locks.rbegin() >= l.order);
     //(if order rules are respected, 'lock_out' and 'must_block' aren't needed)
-    if (!normal_rules) {
+    if (normal_rules) {
+      //NOTE: the loophole to allow blocking for a second+ read is incompatible
+      //with the override used when '!normal_rules'
+      l.lock_out = l.must_block;
+    } else {
       l.lock_out   = false;
       l.must_block = false;
     }
