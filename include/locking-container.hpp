@@ -375,6 +375,9 @@ static void auto_get_lock(locking_container_base <Type> &object, lock_auth_base:
  *
  * This will attempt to obtain locks on the two containers provided. If the
  * containers use ordered locks, locking will be done in ascending order.
+ * \attention Both proxies will be cleared before attempting either lock.
+ * \attention If the return is is true, both proxies will be non-NULL. otherwise
+ * both will be NULL.
  *
  * \param object1 first object to lock
  * \param object2 second object to lock
@@ -393,15 +396,23 @@ bool get_two_locks(locking_container_base <Type1> &object1,
   meta_lock_base *master_lock = NULL) {
   proxy1.clear();
   proxy2.clear();
-  bool order = object1.get_order() < object2.get_order();
+  bool order = object1.get_order() <= object2.get_order();
   if (order) {
     auto_get_lock(object1, auth, master_lock, proxy1);
+    if (!proxy1) return false;
     auto_get_lock(object2, auth, master_lock, proxy2);
   } else {
     auto_get_lock(object2, auth, master_lock, proxy2);
+    if (!proxy2) return false;
     auto_get_lock(object1, auth, master_lock, proxy1);
   }
-  return proxy1 && proxy2;
+  if (!proxy1 || !proxy2) {
+    proxy1.clear();
+    proxy2.clear();
+    return false;
+  } else {
+    return true;
+  }
 }
 
 
