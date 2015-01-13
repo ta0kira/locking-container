@@ -438,7 +438,10 @@ static bool print_graph(graph_head <Type> &the_graph, auth_type auth,
 template <class Index, class Type, class Result = const Type&>
 static void print_node(const Index &index, const graph_node <Type> &the_node,
   Result(*convert)(const Type&) = &identity <Type>) {
-    std::cout << "node " << index << ": " << (*convert)(the_node.obj) << std::endl;
+    std::cout << "node " << index
+              << "(in: "   << the_node.in.size()
+              << ", out: " << the_node.out.size() << "): "
+              << (*convert)(the_node.obj) << std::endl;
 }
 
 
