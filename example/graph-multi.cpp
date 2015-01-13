@@ -36,7 +36,58 @@
  * needs to be obtained to be sure that no other threads are currently accessing
  * any of the nodes.
  *
- * This needs more comments, which will happen at some other time.
+ * The overall design pattern used here is as follows:
+ *
+ *   - The primary data structure is a graph, where each node in the graph is
+ *     protected by its own lock. Edges are stored within each node using a
+ *     table of pointers to other protected nodes.
+ *
+ *   - All nodes are referenced using shared pointers to protected nodes. This
+ *     has its positive and negative points. One positive point is that it
+ *     allows reference to a node without having to hold a lock on any object.
+ *     One negative point is that a node might no longer be a part of the graph
+ *     when a thread finally gets around to accessing it.
+ *
+ *   - To move from one node to another, a write lock is obtained for the
+ *     current node (allowing non-'const' access to its edges), and the next
+ *     node is found in the current node's list of edges. (See below for a
+ *     suggested design pattern.)
+ *
+ *   - The entire graph is managed by a graph object. This object contains a
+ *     table of pointers to all of the graph's nodes. This table merely serves
+ *     as an entry point to the graph; once a thread finds a node in that table,
+ *     it can traverse the graph without needing to further consider the table.
+ *     The table itself is protected by a lock; however, a thread only needs to
+ *     obtain a lock when searching or modifying the table. The table doesn't
+ *     need to be locked to perform operations on the graph itself.
+ *
+ *   - There is a single meta-lock that corresponds to the graph. This lock is
+ *     used when a thread needs to lock multiple nodes in an arbitrary order.
+ *
+ *   - The nodes in the graph are protected by ordered locks. Ideally, each node
+ *     in the graph will have a distinct order. That way, if a thread needs to
+ *     lock two specific nodes (e.g., to add or delete an edge), it can lock the
+ *     node with the lower order first, preventing potential deadlocks.
+ *
+ * Things I still need to implement here:
+ *
+ *   - Add some threads that move around the graph and perform various
+ *     operations. The main thread already demonstrates that the design pattern
+ *     works when no other threads hold locks on nodes; this example needs to be
+ *     extended to demonstrate that it works when arbitrary nodes are locked.
+ *     (It almost certainly won't deadlock; however, it still needs to be
+ *     designed to succeed in the face of rejected locks.)
+ *
+ *   - I need to come up with a better design pattern for moving from one node
+ *     to another without a spinlock. One option is to: 1) obtain a write lock
+ *     on the current node; 2) copy its list of edges; 3) unlock the current
+ *     node; 4) preview/select a destination node from the copied list. This
+ *     obviates the need for holding multiple locks at once. Note that even if
+ *     an edge is deleted during step 4, the destination node will always still
+ *     exist. The trade-off is accepting that the graph might be modified during
+ *     the operation. (Another perspective is that it makes no difference
+ *     whether or not the edge is removed before or after the move, as long as
+ *     the move succeeds in both cases.)
  *
  * Suggested compilation command:
  *   c++ -Wall -pedantic -std=c++11 -O2 -I../include graph-multi.cpp -o graph-multi -lpthread
