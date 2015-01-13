@@ -30,12 +30,7 @@
  | POSSIBILITY OF SUCH DAMAGE.
  +~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-/* This is a complex example of using multi-locking with a graph. Each node in
- * the graph has its own lock, which allows multiple threads to operate on nodes
- * in the graph at once. When the structure needs to be changed, a multi-lock
- * needs to be obtained to be sure that no other threads are currently accessing
- * any of the nodes.
- *
+/* This is a complex working example of a design pattern for a graph structure.
  * The overall design pattern used here is as follows:
  *
  *   - The primary data structure is a graph, where each node in the graph is
