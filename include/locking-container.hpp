@@ -152,28 +152,28 @@ public:
    *  prevention.
    *
    * @see get_write
-   * \param authorization Authorization object to prevent deadlocks.
+   * \param auth Authorization object to prevent deadlocks.
    * \param block Should the call block for a lock?
    *
    * \return proxy object
    */
-  inline write_proxy get_write_auth(auth_type &authorization, bool block = true) {
-    if (!authorization) return write_proxy();
-    return this->get_write_auth(authorization.get(), block);
+  inline write_proxy get_write_auth(auth_type &auth, bool block = true) {
+    if (!auth) return write_proxy();
+    return this->get_write_auth(auth.get(), block);
   }
 
   /*! \brief Retrieve a read-only proxy to the contained object using deadlock
    *  prevention.
    *
    * @see get_write
-   * \param authorization Authorization object to prevent deadlocks.
+   * \param auth Authorization object to prevent deadlocks.
    * \param block Should the call block for a lock?
    *
    * \return proxy object
    */
-  inline read_proxy get_read_auth(auth_type &authorization, bool block = true) {
-    if (!authorization) return read_proxy();
-    return this->get_read_auth(authorization.get(), block);
+  inline read_proxy get_read_auth(auth_type &auth, bool block = true) {
+    if (!auth) return read_proxy();
+    return this->get_read_auth(auth.get(), block);
   }
 
   /*! \brief Retrieve a writable proxy to the contained object using deadlock
@@ -181,15 +181,15 @@ public:
    *
    * @see get_write_auth
    * \param meta_lock Multi-lock object to manage multiple locks.
-   * \param authorization Authorization object to prevent deadlocks.
+   * \param auth Authorization object to prevent deadlocks.
    * \param block Should the call block for a lock?
    *
    * \return proxy object
    */
   inline write_proxy get_write_multi(meta_lock_base &meta_lock,
-    auth_type &authorization, bool block = true) {
-    if (!authorization) return write_proxy();
-    return this->get_write_multi(meta_lock.get_lock_object(), authorization.get(), block);
+    auth_type &auth, bool block = true) {
+    if (!auth) return write_proxy();
+    return this->get_write_multi(meta_lock.get_lock_object(), auth.get(), block);
   }
 
   /*! \brief Retrieve a read-only proxy to the contained object using deadlock
@@ -197,15 +197,15 @@ public:
    *
    * @see get_write_auth
    * \param meta_lock Multi-lock object to manage multiple locks.
-   * \param authorization Authorization object to prevent deadlocks.
+   * \param auth Authorization object to prevent deadlocks.
    * \param block Should the call block for a lock?
    *
    * \return proxy object
    */
   inline read_proxy get_read_multi(meta_lock_base &meta_lock,
-    auth_type &authorization, bool block = true) {
-    if (!authorization) return read_proxy();
-    return this->get_read_multi(meta_lock.get_lock_object(), authorization.get(), block);
+    auth_type &auth, bool block = true) {
+    if (!auth) return read_proxy();
+    return this->get_read_multi(meta_lock.get_lock_object(), auth.get(), block);
   }
 
   //@}
@@ -223,16 +223,16 @@ public:
   virtual inline ~locking_container_base() {}
 
 protected:
-  virtual write_proxy get_write_auth(lock_auth_base *authorization, bool block) = 0;
-  virtual read_proxy  get_read_auth(lock_auth_base *authorization, bool block)  = 0;
+  virtual write_proxy get_write_auth(lock_auth_base *auth, bool block) = 0;
+  virtual read_proxy  get_read_auth(lock_auth_base *auth, bool block)  = 0;
 
   virtual write_proxy get_write_multi(lock_base* /*meta_lock*/,
-    lock_auth_base* /*authorization*/, bool /*block*/) {
+    lock_auth_base* /*auth*/, bool /*block*/) {
     return write_proxy();
   }
 
   virtual read_proxy get_read_multi(lock_base* /*meta_lock*/,
-    lock_auth_base* /*authorization*/, bool /*block*/) {
+    lock_auth_base* /*auth*/, bool /*block*/) {
     return read_proxy();
   }
 };
@@ -318,27 +318,91 @@ public:
   //@}
 
 private:
-  inline write_proxy get_write_auth(lock_auth_base *authorization, bool block) {
-    return this->get_write_multi(NULL, authorization, block);
+  inline write_proxy get_write_auth(lock_auth_base *auth, bool block) {
+    return this->get_write_multi(NULL, auth, block);
   }
 
-  inline read_proxy get_read_auth(lock_auth_base *authorization, bool block) {
-    return this->get_read_multi(NULL, authorization, block);
+  inline read_proxy get_read_auth(lock_auth_base *auth, bool block) {
+    return this->get_read_multi(NULL, auth, block);
   }
 
-  inline write_proxy get_write_multi(lock_base *meta_lock, lock_auth_base *authorization, bool block) {
+  inline write_proxy get_write_multi(lock_base *meta_lock, lock_auth_base *auth, bool block) {
     //NOTE: no read/write choice is given here!
-    return write_proxy(&contained, &locks, authorization, false, block, meta_lock);
+    return write_proxy(&contained, &locks, auth, false, block, meta_lock);
   }
 
-  inline read_proxy get_read_multi(lock_base *meta_lock, lock_auth_base *authorization,
+  inline read_proxy get_read_multi(lock_base *meta_lock, lock_auth_base *auth,
     bool block) {
-    return read_proxy(&contained, &locks, authorization, true, block, meta_lock);
+    return read_proxy(&contained, &locks, auth, true, block, meta_lock);
   }
 
   type contained;
   Lock locks;
 };
+
+
+/*! Helper function used by \ref get_two_locks.*/
+template <class Type>
+static void auto_get_lock(locking_container_base <Type> &object, lock_auth_base::auth_type &auth,
+  meta_lock_base *master_lock, typename locking_container_base <Type> ::write_proxy &write,
+  bool block = true) {
+  if (master_lock && auth) {
+    write = object.get_write_multi(*master_lock, auth, block);
+  } else if (auth) {
+    write = object.get_write_auth(auth, block);
+  } else {
+    write = object.get_write(block);
+  }
+}
+
+
+/*! Helper function used by \ref get_two_locks.*/
+template <class Type>
+static void auto_get_lock(locking_container_base <Type> &object, lock_auth_base::auth_type &auth,
+  meta_lock_base *master_lock, typename locking_container_base <Type> ::read_proxy &read,
+  bool block = true) {
+  if (master_lock && auth) {
+    read = object.get_read_multi(*master_lock, auth, block);
+  } else if (auth) {
+    read = object.get_read_auth(auth, block);
+  } else {
+    read = object.get_read(block);
+  }
+}
+
+
+/*! \brief Attempt to lock two containers.
+ *
+ * This will attempt to obtain locks on the two containers provided. If the
+ * containers use ordered locks, locking will be done in ascending order.
+ *
+ * \param object1 first object to lock
+ * \param object2 second object to lock
+ * \param proxy1 return proxy for the first lock
+ * \param proxy2 return proxy for the second lock
+ * \param block whether or not to block when locking the containers
+ * \param auth authorization object
+ * \param meta_lock multi-lock tracking object
+ * \return success or failure, based entirely on locking success
+ */
+template <class Type1, class Type2, class Proxy1, class Proxy2>
+bool get_two_locks(locking_container_base <Type1> &object1,
+                   locking_container_base <Type2> &object2,
+  Proxy1 &proxy1, Proxy2 &proxy2, bool block = true,
+  lock_auth_base::auth_type auth = lock_auth_base::auth_type(),
+  meta_lock_base *master_lock = NULL) {
+  proxy1.clear();
+  proxy2.clear();
+  bool order = object1.get_order() < object2.get_order();
+  if (order) {
+    auto_get_lock(object1, auth, master_lock, proxy1);
+    auto_get_lock(object2, auth, master_lock, proxy2);
+  } else {
+    auto_get_lock(object2, auth, master_lock, proxy2);
+    auto_get_lock(object1, auth, master_lock, proxy1);
+  }
+  return proxy1 && proxy2;
+}
 
 
 /*! \brief Attempt to copy one container's contents into another.
@@ -354,11 +418,10 @@ private:
 template <class Type1, class Type2>
 inline bool try_copy_container(locking_container_base <Type1> &left,
   locking_container_base <Type2> &right, bool block = true) {
-  typename locking_container_base <Type1> ::write_proxy write = left.get_write(block);
-  if (!write) return false;
+  typename locking_container_base <Type1> ::write_proxy write;
+  typename locking_container_base <Type2> ::read_proxy  read;
 
-  typename locking_container_base <Type2> ::read_proxy read = right.get_read(block);
-  if (!read) return false;
+  if (!get_two_locks(left, right, write, read, block)) return false;
 
   *write = *read;
   return true;
@@ -372,27 +435,18 @@ inline bool try_copy_container(locking_container_base <Type1> &left,
  *
  * \param left container being assigned to
  * \param right container being assigned
- * \param authorization authorization object
+ * \param auth authorization object
  * \param block whether or not to block when locking the containers
  * \return success or failure, based entirely on locking success
  */
 template <class Type1, class Type2>
 inline bool try_copy_container(locking_container_base <Type1> &left,
-  locking_container_base <Type2> &right, lock_auth_base::auth_type &authorization,
+  locking_container_base <Type2> &right, lock_auth_base::auth_type &auth,
   bool block = true) {
   typename locking_container_base <Type1> ::write_proxy write;
   typename locking_container_base <Type2> ::read_proxy  read;
 
-  //NOTE: if either is 0, the order is arbitrary
-  if (left.get_order() < right.get_order()) {
-    write = left.get_write_auth(authorization, block);
-    read  = right.get_read_auth(authorization, block);
-  } else {
-    read  = right.get_read_auth(authorization, block);
-    write = left.get_write_auth(authorization, block);
-  }
-
-  if (!write || !read) return false;
+  if (!get_two_locks(left, right, write, read, block, auth)) return false;
 
   *write = *read;
   return true;
@@ -411,7 +465,7 @@ inline bool try_copy_container(locking_container_base <Type1> &left,
  * \param left container being assigned to
  * \param right container being assigned
  * \param meta_lock multi-lock tracking object
- * \param authorization authorization object
+ * \param auth authorization object
  * \param block whether or not to block when locking the containers
  * \param try_multi whether or not to attempt a write lock on meta_lock
  * \return success or failure, based entirely on locking success
@@ -419,27 +473,14 @@ inline bool try_copy_container(locking_container_base <Type1> &left,
 template <class Type1, class Type2>
 inline bool try_copy_container(locking_container_base <Type1> &left,
   locking_container_base <Type2> &right, meta_lock_base &master_lock,
-  lock_auth_base::auth_type &authorization, bool block = true, bool try_multi = true) {
+  lock_auth_base::auth_type &auth, bool block = true, bool try_multi = true) {
   meta_lock::write_proxy multi;
-  if (try_multi && !(multi = master_lock.get_write_auth(authorization, block))) return false;
+  if (try_multi && !(multi = master_lock.get_write_auth(auth, block))) return false;
 
   typename locking_container_base <Type1> ::write_proxy write;
   typename locking_container_base <Type2> ::read_proxy  read;
 
-  //NOTE: not entirely necessary with multi-locking, but we'll play the game
-
-  //NOTE: if either is 0, the order is arbitrary
-  if (left.get_order() < right.get_order()) {
-    write = left.get_write_multi(master_lock, authorization, block);
-    read  = right.get_read_multi(master_lock, authorization, block);
-  } else {
-    read  = right.get_read_multi(master_lock, authorization, block);
-    write = left.get_write_multi(master_lock, authorization, block);
-  }
-
-  if (try_multi) multi.clear();
-
-  if (!write || !read) return false;
+  if (!get_two_locks(left, right, write, read, block, auth, &master_lock)) return false;
 
   *write = *read;
   return true;

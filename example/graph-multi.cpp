@@ -155,42 +155,16 @@ protected:
     left.erase(right);
   }
 
-  static void get_two_writes(shared_node left, shared_node right, auth_type auth,
-    shared_meta_lock master_lock, typename protected_node::write_proxy &write1,
-    typename protected_node::write_proxy &write2, bool block = true) {
-    assert(left.get() && right.get());
-    bool order = left->get_order() < right->get_order();
-    if (master_lock && auth) {
-      if (order) {
-        write1 = left->get_write_multi(*master_lock, auth, block);
-        write2 = right->get_write_multi(*master_lock, auth, block);
-      } else {
-        write2 = right->get_write_multi(*master_lock, auth, block);
-        write1 = left->get_write_multi(*master_lock, auth, block);
-      }
-    } else if (auth) {
-      if (order) {
-        write1 = left->get_write_auth(auth, block);
-        write2 = right->get_write_auth(auth, block);
-      } else {
-        write2 = right->get_write_auth(auth, block);
-        write1 = left->get_write_auth(auth, block);
-      }
-    } else {
-      write1 = left->get_write(block);
-      write2 = right->get_write(block);
-    }
-  }
-
   template <class Func>
   static bool change_connection_common(Func func, shared_node left, shared_node right,
     auth_type auth = auth_type(), shared_meta_lock master_lock = shared_meta_lock(),
     bool try_multi = true) {
+    assert(left.get() && right.get());
     lc::meta_lock::write_proxy multi;
     if (try_multi && master_lock && !(multi = master_lock->get_write_auth(auth))) return false;
 
     typename protected_node::write_proxy write_l, write_r;
-    get_two_writes(left, right, auth, master_lock, write_l, write_r);
+    lc::get_two_locks(*left, *right, write_l, write_r, true, auth, master_lock.get());
     multi.clear();
     if (!write_l || !write_r) return false;
 
