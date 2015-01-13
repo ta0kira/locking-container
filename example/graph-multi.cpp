@@ -297,7 +297,7 @@ public:
     shared_node value(new locking_node(args...));
     assert(value.get());
     //NOTE: added nodes must have higher order than the node map itself
-    assert(value->get_order() > all_nodes.get_order());
+    assert(!all_nodes.get_order() || value->get_order() > all_nodes.get_order());
     return this->change_node(index, auth, &replace_node, value);
   }
 
@@ -485,6 +485,8 @@ int main() {
   int_graph main_graph(1);
   auth_type main_auth(main_graph.get_new_auth());
 
+  //create all of the nodes
+
   for (int i = 0; i < graph_size; i++) {
     //NOTE: lock order must be greater than that of 'main_graph'
     order_type lock_order = main_graph.get_order() + i + 1;
@@ -495,6 +497,8 @@ int main() {
       fprintf(stderr, "added node %i\n", i);
     }
   }
+
+  //add edges to the graph
 
   for (int i = 0; i < graph_size; i++) {
     int from = i, to = (i + 1) % graph_size;
@@ -513,7 +517,10 @@ int main() {
     }
   }
 
+  //traversal method of printing the graph
   print_graph(main_graph, main_auth, &tagged_value::get_tag);
+
+  //remove one node at a time (just to see what happens)
 
   for (int i = 0; i < graph_size; i++) {
     int remove = i;
