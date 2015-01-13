@@ -298,12 +298,12 @@ public:
 
   template <class Func, class ... Args>
   inline bool iterate_nodes_write(auth_type auth, Func func, Args ... args) {
-    return this->iterate_nodes(&get_node_write, auth, func, args...);
+    return this->iterate_nodes(&protected_node::get_write_auth, auth, func, args...);
   }
 
   template <class Func, class ... Args>
   inline bool iterate_nodes_read(auth_type auth, Func func, Args ... args) {
-    return this->iterate_nodes(&get_node_read, auth, func, args...);
+    return this->iterate_nodes(&protected_node::get_read_auth, auth, func, args...);
   }
 
   virtual ~graph() {
@@ -330,16 +330,6 @@ protected:
 
   static void remove_node(node_map &the_nodes, const index_type &index) {
     the_nodes.erase(index);
-  }
-
-  static typename protected_node::write_proxy get_node_write(protected_node &the_node,
-    auth_type &auth) {
-    return the_node.get_write_auth(auth);
-  }
-
-  static typename protected_node::read_proxy get_node_read(protected_node &the_node,
-    auth_type &auth) {
-    return the_node.get_read_auth(auth);
   }
 
   template <class Member>
@@ -381,7 +371,7 @@ protected:
   }
 
   template <class Func, class Proxy, class ... Args>
-  bool iterate_nodes(Proxy(*get)(protected_node&, auth_type&), auth_type auth,
+  bool iterate_nodes(Proxy(protected_node::*get)(auth_type&, bool), auth_type auth,
     Func func, Args ... args) {
     typename protected_node_map::write_proxy write = all_nodes.get_write_multi(*master_lock, auth);
     if (!write) return false;
@@ -391,7 +381,7 @@ protected:
          current != end; ++current) {
       assert(current->second.get());
       //NOTE: if ordering is respected, this should always succeed
-      Proxy this_node = (*get)(*current->second, auth);
+      Proxy this_node = ((*current->second).*get)(auth, true);
       if (!this_node) return false;
       (*func)(current->first, *this_node, args...);
     }
