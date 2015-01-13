@@ -263,23 +263,6 @@ public:
     return all_nodes.get_order();
   }
 
-  template <class Func, class ... Args>
-  bool iterate_nodes(auth_type auth, Func func, Args ... args) {
-    typename protected_node_map::write_proxy write = all_nodes.get_write_multi(*master_lock, auth);
-    if (!write) return false;
-    //NOTE: 'master_lock' isn't used before because we want to finish the loop
-    //without exiting early for another thread's multi-lock request
-    for (iterator current = write->begin(), end = write->end();
-         current != end; ++current) {
-      assert(current->second.get());
-      //NOTE: if ordering is respected, this should always block
-      typename protected_node::read_proxy this_node = current->second->get_read_auth(auth);
-      if (!this_node) return false;
-      (*func)(current->first, *this_node, args...);
-    }
-    return true;
-  }
-
   virtual bool connect_nodes(shared_node left, shared_node right, auth_type auth,
     bool try_multi = true) {
     //NOTE: this doesn't use 'find_node' so that error returns only pertain to
@@ -313,6 +296,16 @@ public:
     return this->change_node(index, auth, &remove_node);
   }
 
+  template <class Func, class ... Args>
+  inline bool iterate_nodes_write(auth_type auth, Func func, Args ... args) {
+    return this->iterate_nodes(&get_node_write, auth, func, args...);
+  }
+
+  template <class Func, class ... Args>
+  inline bool iterate_nodes_read(auth_type auth, Func func, Args ... args) {
+    return this->iterate_nodes(&get_node_read, auth, func, args...);
+  }
+
   virtual ~graph() {
     auth_type auth(all_nodes.get_new_auth());
     typename protected_node_map::write_proxy write = all_nodes.get_write_auth(auth, false);
@@ -337,6 +330,16 @@ protected:
 
   static void remove_node(node_map &the_nodes, const index_type &index) {
     the_nodes.erase(index);
+  }
+
+  static typename protected_node::write_proxy get_node_write(protected_node &the_node,
+    auth_type &auth) {
+    return the_node.get_write_auth(auth);
+  }
+
+  static typename protected_node::read_proxy get_node_read(protected_node &the_node,
+    auth_type &auth) {
+    return the_node.get_read_auth(auth);
   }
 
   template <class Member>
@@ -374,6 +377,24 @@ protected:
     //NOTE: if this results in destruction of the old node, it shouldn't have
     //any locks on it that will cause problems
     (*func)(*write, index, args...);
+    return true;
+  }
+
+  template <class Func, class Proxy, class ... Args>
+  bool iterate_nodes(Proxy(*get)(protected_node&, auth_type&), auth_type auth,
+    Func func, Args ... args) {
+    typename protected_node_map::write_proxy write = all_nodes.get_write_multi(*master_lock, auth);
+    if (!write) return false;
+    //NOTE: 'master_lock' isn't used before because we want to finish the loop
+    //without exiting early for another thread's multi-lock request
+    for (iterator current = write->begin(), end = write->end();
+         current != end; ++current) {
+      assert(current->second.get());
+      //NOTE: if ordering is respected, this should always block
+      Proxy this_node = (*get)(*current->second, auth);
+      if (!this_node) return false;
+      (*func)(current->first, *this_node, args...);
+    }
     return true;
   }
 
@@ -504,7 +525,8 @@ int main() {
       return 1;
     } else {
       fprintf(stderr, "erased node %i\n", remove);
-      main_graph.iterate_nodes(main_auth, &print_node <int, tagged_value, int>, &tagged_value::get_tag);
+      main_graph.iterate_nodes_read(main_auth, &print_node <int, tagged_value, int>,
+        &tagged_value::get_tag);
     }
   }
 }
