@@ -58,8 +58,9 @@
 #include "locking-container.inc"
 
 
-typedef lc::lock_auth_base::auth_type auth_type;
-typedef lc::shared_meta_lock          shared_meta_lock;
+typedef lc::lock_auth_base::auth_type  auth_type;
+typedef lc::lock_auth_base::order_type order_type;
+typedef lc::shared_meta_lock           shared_meta_lock;
 
 
 template <class Type>
@@ -180,12 +181,13 @@ public:
   using typename base::stored_type;
   using typename base::protected_node;
   using typename base::shared_node;
-  typedef Index                                        index_type;
-  typedef std::map <index_type, shared_node>           node_map;
-  typedef typename node_map::iterator                  iterator;
-  typedef lc::locking_container <node_map, lc::w_lock> protected_node_map;
+  typedef Index                                       index_type;
+  typedef std::map <index_type, shared_node>          node_map;
+  typedef typename node_map::iterator                 iterator;
+  typedef lc::ordered_lock <lc::rw_lock>              lock_type;
+  typedef lc::locking_container <node_map, lock_type> protected_node_map;
 
-  graph() : master_lock(new lc::meta_lock) {}
+  graph(order_type o) : master_lock(new lc::meta_lock), all_nodes(node_map(), o) {}
 
 private:
   graph(const graph&);
@@ -211,16 +213,20 @@ public:
     return master_lock;
   }
 
+  inline order_type get_order() const {
+    return all_nodes.get_order();
+  }
+
   template <class Func, class ... Args>
   bool iterate_nodes(auth_type auth, Func func, Args ... args) {
-    //NOTE: this allows us to ignore 'master_lock' until the operation completes
-    typename lc::meta_lock_base::read_proxy multi = this->block_master_lock(auth);
-    if (!multi) return false;
-    typename protected_node_map::write_proxy write = all_nodes.get_write_auth(auth);
+    typename protected_node_map::write_proxy write = all_nodes.get_write_multi(*master_lock, auth);
     if (!write) return false;
+    //NOTE: 'master_lock' isn't used before because we want to finish the loop
+    //without exiting early for another thread's multi-lock request
     for (iterator current = write->begin(), end = write->end();
          current != end; ++current) {
       assert(current->second.get());
+      //NOTE: if ordering is respected, this should always block
       typename protected_node::read_proxy this_node = current->second->get_read_auth(auth);
       if (!this_node) return false;
       (*func)(current->first, *this_node, args...);
@@ -252,6 +258,8 @@ public:
 
   virtual bool insert_node(const index_type &index, shared_node value, auth_type auth) {
     assert(value.get());
+    //NOTE: added nodes must have higher order than the node map itself
+    assert(value->get_order() > all_nodes.get_order());
     return this->change_node(index, auth, &replace_node, value);
   }
 
@@ -260,7 +268,7 @@ public:
   }
 
   virtual ~graph() {
-    auth_type auth(new lc::lock_auth_max);
+    auth_type auth(all_nodes.get_new_auth());
     typename protected_node_map::write_proxy write = all_nodes.get_write_auth(auth, false);
     assert(write);
     for (typename node_map::iterator current = write->begin(), end = write->end();
@@ -277,12 +285,12 @@ public:
   }
 
 protected:
-  static void replace_node(node_map &all_nodes, const index_type &index, shared_node value) {
-    all_nodes[index] = value;
+  static void replace_node(node_map &the_nodes, const index_type &index, shared_node value) {
+    the_nodes[index] = value;
   }
 
-  static void remove_node(node_map &all_nodes, const index_type &index) {
-    all_nodes.erase(index);
+  static void remove_node(node_map &the_nodes, const index_type &index) {
+    the_nodes.erase(index);
   }
 
   template <class Member>
@@ -407,11 +415,13 @@ typedef lc::locking_container <int_graph::node, lc::ordered_lock <lc::rw_lock> >
 
 int main() {
   int       graph_size = 10;
-  int_graph main_graph;
+  int_graph main_graph(1);
   auth_type main_auth(locking_node::new_auth());
 
   for (int i = 0; i < graph_size; i++) {
-    if (!main_graph.insert_node(i, int_graph::shared_node(new locking_node(tagged_value(i), i + 1)), main_auth)) {
+    //NOTE: lock order must be greater than that of 'main_graph'
+    order_type lock_order = main_graph.get_order() + i + 1;
+    if (!main_graph.insert_node(i, int_graph::shared_node(new locking_node(tagged_value(i), lock_order)), main_auth)) {
       fprintf(stderr, "could not add node %i\n", i);
       return 1;
     } else {
