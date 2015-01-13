@@ -343,7 +343,7 @@ private:
 
 /*! Helper function used by \ref get_two_locks.*/
 template <class Type>
-static void auto_get_lock(locking_container_base <Type> &object, lock_auth_base::auth_type &auth,
+static bool auto_get_lock(locking_container_base <Type> &object, lock_auth_base::auth_type &auth,
   meta_lock_base *master_lock, typename locking_container_base <Type> ::write_proxy &write,
   bool block = true) {
   if (master_lock && auth) {
@@ -353,12 +353,13 @@ static void auto_get_lock(locking_container_base <Type> &object, lock_auth_base:
   } else {
     write = object.get_write(block);
   }
+  return (bool) write;
 }
 
 
 /*! Helper function used by \ref get_two_locks.*/
 template <class Type>
-static void auto_get_lock(locking_container_base <Type> &object, lock_auth_base::auth_type &auth,
+static bool auto_get_lock(locking_container_base <Type> &object, lock_auth_base::auth_type &auth,
   meta_lock_base *master_lock, typename locking_container_base <Type> ::read_proxy &read,
   bool block = true) {
   if (master_lock && auth) {
@@ -368,6 +369,7 @@ static void auto_get_lock(locking_container_base <Type> &object, lock_auth_base:
   } else {
     read = object.get_read(block);
   }
+  return (bool) read;
 }
 
 
@@ -398,21 +400,13 @@ bool get_two_locks(locking_container_base <Type1> &object1,
   proxy2.clear();
   bool order = object1.get_order() <= object2.get_order();
   if (order) {
-    auto_get_lock(object1, auth, master_lock, proxy1);
-    if (!proxy1) return false;
-    auto_get_lock(object2, auth, master_lock, proxy2);
+    if (!auto_get_lock(object1, auth, master_lock, proxy1)) return false;
+    if (!auto_get_lock(object2, auth, master_lock, proxy2)) proxy1.clear();
   } else {
-    auto_get_lock(object2, auth, master_lock, proxy2);
-    if (!proxy2) return false;
-    auto_get_lock(object1, auth, master_lock, proxy1);
+    if (!auto_get_lock(object2, auth, master_lock, proxy2)) return false;
+    if (!auto_get_lock(object1, auth, master_lock, proxy1)) proxy2.clear();
   }
-  if (!proxy1 || !proxy2) {
-    proxy1.clear();
-    proxy2.clear();
-    return false;
-  } else {
-    return true;
-  }
+  return proxy1 && proxy2;
 }
 
 
