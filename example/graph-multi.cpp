@@ -227,11 +227,14 @@ public:
   using typename base::stored_type;
   using typename base::protected_node;
   using typename base::shared_node;
+
   typedef Index                                       index_type;
   typedef std::map <index_type, shared_node>          node_map;
   typedef typename node_map::iterator                 iterator;
+
   typedef lc::ordered_lock <lc::rw_lock>              lock_type;
   typedef lc::locking_container <node_map, lock_type> protected_node_map;
+  typedef lc::locking_container <node, lock_type>     locking_node;
 
   graph(order_type o) : master_lock(new lc::meta_lock), all_nodes(node_map(), o) {}
 
@@ -240,6 +243,10 @@ private:
   graph &operator = (const graph&);
 
 public:
+    inline auth_type get_new_auth() const {
+      return all_nodes.get_new_auth();
+    }
+
   shared_node get_graph_head(auth_type auth) {
     typename protected_node_map::write_proxy write = all_nodes.get_write_multi(*master_lock, auth);
     if (!write) return shared_node();
@@ -285,7 +292,9 @@ public:
     return (found == write->end())? shared_node() : found->second;
   }
 
-  virtual bool insert_node(const index_type &index, shared_node value, auth_type auth) {
+  template <class ... Args>
+  inline bool insert_node(const index_type &index, auth_type auth, Args ... args) {
+    shared_node value(new locking_node(args...));
     assert(value.get());
     //NOTE: added nodes must have higher order than the node map itself
     assert(value->get_order() > all_nodes.get_order());
@@ -307,7 +316,7 @@ public:
   }
 
   virtual ~graph() {
-    auth_type auth(all_nodes.get_new_auth());
+    auth_type auth(this->get_new_auth());
     typename protected_node_map::write_proxy write = all_nodes.get_write_auth(auth, false);
     assert(write);
     for (typename node_map::iterator current = write->begin(), end = write->end();
@@ -469,19 +478,17 @@ struct tagged_value {
 
 
 typedef graph <int, tagged_value> int_graph;
-//NOTE: using an ordered lock allows adding/removing edges without using the master lock
-typedef lc::locking_container <int_graph::node, lc::ordered_lock <lc::rw_lock> > locking_node;
 
 
 int main() {
   int       graph_size = 10;
   int_graph main_graph(1);
-  auth_type main_auth(locking_node::new_auth());
+  auth_type main_auth(main_graph.get_new_auth());
 
   for (int i = 0; i < graph_size; i++) {
     //NOTE: lock order must be greater than that of 'main_graph'
     order_type lock_order = main_graph.get_order() + i + 1;
-    if (!main_graph.insert_node(i, int_graph::shared_node(new locking_node(tagged_value(i), lock_order)), main_auth)) {
+    if (!main_graph.insert_node(i, main_auth, tagged_value(i), lock_order)) {
       fprintf(stderr, "could not add node %i\n", i);
       return 1;
     } else {
