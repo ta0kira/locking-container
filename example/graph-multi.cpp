@@ -385,12 +385,12 @@ protected:
     Func func, Args ... args) {
     typename protected_node_map::write_proxy write = all_nodes.get_write_multi(*master_lock, auth);
     if (!write) return false;
-    //NOTE: 'master_lock' isn't used before because we want to finish the loop
+    //NOTE: 'master_lock' isn't used below because we want to finish the loop
     //without exiting early for another thread's multi-lock request
     for (iterator current = write->begin(), end = write->end();
          current != end; ++current) {
       assert(current->second.get());
-      //NOTE: if ordering is respected, this should always block
+      //NOTE: if ordering is respected, this should always succeed
       Proxy this_node = (*get)(*current->second, auth);
       if (!this_node) return false;
       (*func)(current->first, *this_node, args...);
