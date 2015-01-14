@@ -439,6 +439,55 @@ static void print_node(const Index &index, const graph_node <Type> &the_node,
 }
 
 
+template <class Node, class Target, class Compare, class Result>
+bool find_node_local(Node start, const Target &target, auth_type auth,
+  shared_meta_lock master_lock, Result &result, Compare *compare,
+  Result(*convert)(typename Node::element_type&, auth_type)) {
+  assert(start.get());
+  assert(master_lock.get());
+  std::set <const void*> visited;
+  typedef typename Node::element_type::type node_type;
+  std::queue <typename node_type::shared_node> pending;
+  pending.push(start);
+
+  while (pending.size()) {
+    typename node_type::shared_node next = pending.front();
+    pending.pop();
+    assert(next.get());
+    if ((*compare)(*next, target, auth)) {
+      result = (*convert)(*next, auth);
+      return true;
+    } else {
+      typename node_type::protected_node::write_proxy write =
+        next->get_write_multi(*master_lock, auth);
+      if (!write) return false;
+      for (typename node_type::connected_nodes::iterator current =
+           write->out.begin(), end = write->out.end(); current != end; ++current) {
+        if (visited.find(current->get()) == visited.end()) {
+          pending.push(*current);
+          visited.insert(current->get());
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+
+template <class Type>
+bool compare_protected_node_pointer(typename graph_node <Type> ::protected_node &left,
+  const typename graph_node <Type> ::protected_node &right, auth_type auth) {
+  return &left == &right;
+}
+
+
+template <class Type>
+Type *reference_to_pointer(Type &reference, auth_type auth) {
+  return &reference;
+}
+
+
 struct tagged_value {
   tagged_value(int t, int v = 0) : tag(t), value(v) {}
 
@@ -454,6 +503,14 @@ struct tagged_value {
 typedef graph <int, tagged_value> int_graph;
 
 
+static bool compare_tagged_value_value(int_graph::protected_node &the_node,
+  int value, auth_type auth) {
+  int_graph::protected_node::read_proxy read = the_node.get_read_auth(auth);
+  if (!read) return false;
+  return read->obj.value == value;
+}
+
+
 int main() {
   int       graph_size = 10;
   int_graph main_graph(1);
@@ -464,7 +521,7 @@ int main() {
   for (int i = 0; i < graph_size; i++) {
     //NOTE: lock order must be greater than that of 'main_graph'
     order_type lock_order = main_graph.get_order() + i + 1;
-    if (!main_graph.insert_node(i, main_auth, tagged_value(i), lock_order)) {
+    if (!main_graph.insert_node(i, main_auth, tagged_value(i, i), lock_order)) {
       fprintf(stderr, "could not add node %i\n", i);
       return 1;
     } else {
@@ -493,6 +550,25 @@ int main() {
 
   //traversal method of printing the graph
   print_graph(main_graph, main_auth, &tagged_value::get_tag);
+
+  //find a node meeting a certain criteria
+
+  int target = 3;
+  int_graph::protected_node *result = NULL;
+  if (!find_node_local(main_graph.get_graph_head(main_auth), target, main_auth,
+         main_graph.show_master_lock(), result, &compare_tagged_value_value,
+         &reference_to_pointer)) {
+    fprintf(stderr, "could not find node with target %i\n", target);
+    return 1;
+  } else {
+    assert(result);
+    int_graph::protected_node::read_proxy read = result->get_read_auth(main_auth);
+    if (!read) {
+      fprintf(stderr, "could not obtain lock on found node %p\n", result);
+      return 1;
+    }
+    fprintf(stderr, "found target value %i at node %i (%p)\n", target, read->obj.tag, result);
+  }
 
   //remove one node at a time (just to see what happens)
 
