@@ -164,9 +164,8 @@ protected:
     if (try_multi && master_lock && !(multi = master_lock->get_write_auth(auth))) return false;
 
     typename protected_node::write_proxy write_l, write_r;
-    lc::get_two_locks(*left, *right, write_l, write_r, true, auth, master_lock.get());
+    if (!lc::get_two_locks(*left, *right, write_l, write_r, true, auth, master_lock.get())) return false;
     multi.clear();
-    if (!write_l || !write_r) return false;
 
     (*func)(write_l->out, right);
     (*func)(write_r->in,  left);
@@ -244,18 +243,16 @@ public:
     return all_nodes.get_order();
   }
 
-  virtual bool connect_nodes(shared_node left, shared_node right, auth_type auth,
-    bool try_multi = true) {
+  virtual bool connect_nodes(shared_node left, shared_node right, auth_type auth) {
     //NOTE: this doesn't use 'find_node' so that error returns only pertain to
     //failed lock operations
-    return node::connect_nodes(left, right, auth, try_multi? master_lock : shared_meta_lock());
+    return node::connect_nodes(left, right, auth, master_lock, !this->get_order());
   }
 
-  virtual bool disconnect_nodes(shared_node left, shared_node right, auth_type auth,
-    bool try_multi = true) {
+  virtual bool disconnect_nodes(shared_node left, shared_node right, auth_type auth) {
     //NOTE: this doesn't use 'find_node' so that error returns only pertain to
     //failed lock operations
-    return node::disconnect_nodes(left, right, auth, try_multi? master_lock : shared_meta_lock());
+    return node::disconnect_nodes(left, right, auth, master_lock, !this->get_order());
   }
 
   virtual shared_node find_node(const index_type &index, auth_type auth) {
@@ -539,8 +536,7 @@ int main() {
       fprintf(stderr, "error finding nodes\n");
       return 1;
     }
-    //NOTE: 'false' means we don't wait for a multi-lock (because of ordered locks)
-    if (!main_graph.connect_nodes(left, right, main_auth, false)) {
+    if (!main_graph.connect_nodes(left, right, main_auth)) {
       fprintf(stderr, "could not connect node %i to node %i\n", from, to);
       return 1;
     } else {
