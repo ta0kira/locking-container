@@ -380,6 +380,8 @@ static bool auto_get_lock(locking_container_base <Type> &object, lock_auth_base:
  * \attention Both proxies will be cleared before attempting either lock.
  * \attention If the return is is true, both proxies will be non-NULL. otherwise
  * both will be NULL.
+ * \attention This will not attempt to obtain a multi-lock. If one is necessary,
+ * you must therefore obtain it before calling this function.
  *
  * \param object1 first object to lock
  * \param object2 second object to lock
@@ -464,7 +466,7 @@ inline bool try_copy_container(locking_container_base <Type1> &left,
  * fails.
  * \attention This will only work if no other thread holds a lock on either of
  * the containers.
- * \attention If try_multi is false, his will fail if the caller doesn't have a
+ * \attention If try_multi is false, this will fail if the caller doesn't have a
  * write lock on the \ref meta_lock_base passed.
  *
  * \param left container being assigned to
