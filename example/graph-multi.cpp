@@ -88,8 +88,8 @@
  *   c++ -Wall -pedantic -std=c++11 -O2 -I../include graph-multi.cpp -o graph-multi -lpthread
  */
 
-#include <set>
-#include <map>
+#include <unordered_set>
+#include <unordered_map>
 #include <queue>
 #include <string>
 #include <memory>
@@ -114,7 +114,7 @@ struct graph_node {
   typedef Type stored_type;
   typedef lc::locking_container_base <graph_node> protected_node;
   typedef std::shared_ptr <protected_node>        shared_node;
-  typedef std::set <shared_node>                  connected_nodes;
+  typedef std::unordered_set <shared_node>        connected_nodes;
 
   inline graph_node(const stored_type &value) : obj(value) {}
 
@@ -202,9 +202,9 @@ public:
   using typename base::protected_node;
   using typename base::shared_node;
 
-  typedef Index                                       index_type;
-  typedef std::map <index_type, shared_node>          node_map;
-  typedef typename node_map::iterator                 iterator;
+  typedef Index                                        index_type;
+  typedef std::unordered_map <index_type, shared_node> node_map;
+  typedef typename node_map::iterator                  iterator;
 
   typedef lc::ordered_lock <lc::rw_lock>              lock_type;
   typedef lc::locking_container <node_map, lock_type> protected_node_map;
@@ -445,7 +445,7 @@ bool find_node_local(Node start, const Target &target, auth_type auth,
   Result(*convert)(typename Node::element_type&, auth_type)) {
   assert(start.get());
   assert(master_lock.get());
-  std::set <const void*> visited;
+  std::unordered_set <const void*> visited;
   typedef typename Node::element_type::type node_type;
   std::queue <typename node_type::shared_node> pending;
   pending.push(start);
