@@ -295,8 +295,9 @@ namespace lc {
 
   bool lock_auth_rw_lock::test_auth(lock_data &l) const {
     if (!this->order_allowed(l.order)) return false;
-    if (reading && (l.lock_out || (!l.read && l.must_block))) l.block = false;
-    if (writing && (l.must_block || l.lock_out))              l.block = false;
+    if (!reading && !writing) return true;
+    if (l.lock_out)                           l.block = false;
+    if ((writing || !l.read) && l.must_block) l.block = false;
     return true;
   }
 
@@ -332,8 +333,9 @@ namespace lc {
 
   bool lock_auth_r_lock::test_auth(lock_data &l) const {
     if (!this->order_allowed(l.order)) return false;
-    if (!l.read) return false;
-    if (reading && l.lock_out) l.block = false;
+    if (!l.read)  return false;
+    if (!reading) return true;
+    if (l.lock_out) l.block = false;
     return true;
   }
 
@@ -363,7 +365,8 @@ namespace lc {
 
   bool lock_auth_w_lock::test_auth(lock_data &l) const {
     if (!this->order_allowed(l.order)) return false;
-    if (writing && (l.must_block || l.lock_out)) l.block = false;
+    if (!writing) return true;
+    if (l.lock_out || l.must_block) l.block = false;
     return true;
   }
 

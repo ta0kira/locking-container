@@ -299,11 +299,9 @@ exceptions are made:
      rather than rejecting the lock. This is only useful with 'lc::dumb_lock',
      which never really knows if a thread is waiting.)
 
-  2) "Must Block" Exception: If the lock operation doesn't need to block, a
-     deadlock isn't possible; therefore, the lock will be allowed, even if it
-     violates lock-count restrictions otherwise imposed by the auth. object.
-     This allows threads to potentially hold multiple read locks, which is
-     addressed in detail in a later section.
+  2) "Safe Block" Exception: If the lock operation won't block, then a deadlock
+     isn't possible; therefore, the lock will be allowed, even if it violates
+     the lock-type counts for the auth. object.
 
   3) "Writer Reads" Exception: If the container to be locked uses 'lc::rw_lock',
      and the calling thread holds the write lock on that container and it's
