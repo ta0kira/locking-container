@@ -1,6 +1,6 @@
 /* This software is released under the BSD License.
  |
- | Copyright (c) 2015, Kevin P. Barry [ta0kira@gmail.com]
+ | Copyright (c) 2015-2016, Kevin P. Barry [ta0kira@gmail.com]
  | All rights reserved.
  |
  | Redistribution  and  use  in  source  and   binary  forms,  with  or  without
@@ -34,10 +34,11 @@
 #define lc_locks_hpp
 
 #include <atomic>
+#include <condition_variable>
 #include <memory>
+#include <mutex>
 
 #include <assert.h>
-#include <pthread.h>
 
 #include "lock-auth.hpp"
 
@@ -103,11 +104,11 @@ public:
   ~rw_lock();
 
 private:
-  count_type       readers, readers_waiting;
-  bool             writer, writer_waiting;
-  const void      *the_writer;
-  pthread_mutex_t  master_lock;
-  pthread_cond_t   read_wait, write_wait;
+  count_type               readers, readers_waiting;
+  bool                     writer, writer_waiting;
+  const void              *the_writer;
+  std::mutex               master_lock;
+  std::condition_variable  read_wait, write_wait;
 };
 
 
@@ -167,10 +168,10 @@ public:
   ~w_lock();
 
 private:
-  bool            writer;
-  count_type      writers_waiting;
-  pthread_mutex_t master_lock;
-  pthread_cond_t  write_wait;
+  bool                    writer;
+  count_type              writers_waiting;
+  std::mutex              master_lock;
+  std::condition_variable write_wait;
 };
 
 
@@ -249,7 +250,7 @@ public:
   ~dumb_lock();
 
 private:
-  pthread_mutex_t master_lock;
+  std::mutex master_lock;
 };
 
 

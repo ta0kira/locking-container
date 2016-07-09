@@ -1,6 +1,6 @@
 /* This software is released under the BSD License.
  |
- | Copyright (c) 2014-2015, Kevin P. Barry [ta0kira@gmail.com]
+ | Copyright (c) 2014-2016, Kevin P. Barry [ta0kira@gmail.com]
  | All rights reserved.
  |
  | Redistribution  and  use  in  source  and   binary  forms,  with  or  without
@@ -70,8 +70,6 @@
  * Other notes:
  *
  *   - You must enable C++11 (or higher) when using this header.
- *
- *   - You might need to link your executable with libpthread after compiling.
  *
  *   - To copy a container, you must first get a proxy from it, then construct
  *     the copy with the corresponding object. To assign one container to

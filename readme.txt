@@ -5,8 +5,7 @@ multithreaded C++ applications. The philosophy of this project is that it's
 better to have an identifiable failure point than to have a mysterious deadlock
 that can't be located.
 
-This project uses C++11 and the pthread API (Linux, FreeBSD, etc.), so this code
-won't work without an appropriate environment and compiler.
+This project uses C++11, so this code requires an appropriate compiler.
 
 To utilize this project, move the contents of the "include" directory to a
 convenient location, then:

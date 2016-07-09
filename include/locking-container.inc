@@ -1,3 +1,35 @@
+/* This software is released under the BSD License.
+ |
+ | Copyright (c) 2015-2016, Kevin P. Barry [ta0kira@gmail.com]
+ | All rights reserved.
+ |
+ | Redistribution  and  use  in  source  and   binary  forms,  with  or  without
+ | modification, are permitted provided that the following conditions are met:
+ |
+ | - Redistributions of source code must retain the above copyright notice, this
+ |   list of conditions and the following disclaimer.
+ |
+ | - Redistributions in binary  form must reproduce the  above copyright notice,
+ |   this list  of conditions and the following disclaimer in  the documentation
+ |   and/or other materials provided with the distribution.
+ |
+ | - Neither the name  of the  Locking Container Project  nor  the names  of its
+ |   contributors may be  used to endorse or promote products  derived from this
+ |   software without specific prior written permission.
+ |
+ | THIS SOFTWARE IS  PROVIDED BY THE COPYRIGHT HOLDERS AND  CONTRIBUTORS "AS IS"
+ | AND ANY  EXPRESS OR IMPLIED  WARRANTIES,  INCLUDING, BUT  NOT LIMITED TO, THE
+ | IMPLIED WARRANTIES OF  MERCHANTABILITY  AND FITNESS FOR A  PARTICULAR PURPOSE
+ | ARE DISCLAIMED.  IN  NO EVENT SHALL  THE COPYRIGHT  OWNER  OR CONTRIBUTORS BE
+ | LIABLE  FOR  ANY  DIRECT,   INDIRECT,  INCIDENTAL,   SPECIAL,  EXEMPLARY,  OR
+ | CONSEQUENTIAL   DAMAGES  (INCLUDING,  BUT  NOT  LIMITED  TO,  PROCUREMENT  OF
+ | SUBSTITUTE GOODS OR SERVICES;  LOSS  OF USE,  DATA,  OR PROFITS;  OR BUSINESS
+ | INTERRUPTION)  HOWEVER  CAUSED  AND ON  ANY  THEORY OF LIABILITY,  WHETHER IN
+ | CONTRACT,  STRICT  LIABILITY, OR  TORT (INCLUDING  NEGLIGENCE  OR  OTHERWISE)
+ | ARISING IN ANY  WAY OUT OF  THE USE OF THIS SOFTWARE, EVEN  IF ADVISED OF THE
+ | POSSIBILITY OF SUCH DAMAGE.
+ +~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
 #include "locks.hpp"
 #include "lock-auth.hpp"
 #include "object-proxy.hpp"
@@ -13,14 +45,10 @@ namespace lc {
 
 
   rw_lock::rw_lock() : readers(0), readers_waiting(0), writer(false),
-    writer_waiting(false), the_writer(NULL) {
-    pthread_mutex_init(&master_lock, NULL);
-    pthread_cond_init(&read_wait, NULL);
-    pthread_cond_init(&write_wait, NULL);
-  }
+    writer_waiting(false), the_writer(NULL) {}
 
   rw_lock::count_type rw_lock::lock(lock_auth_base *auth, bool read, bool block, bool test) {
-    if (pthread_mutex_lock(&master_lock) != 0) return -1;
+    std::unique_lock <std::mutex> local_lock(master_lock);
     bool writer_reads = auth && the_writer == auth && read;
     bool lock_out     = writer_waiting || readers_waiting;
     //NOTE: see "wait" loops below for these conditions
@@ -29,14 +57,12 @@ namespace lc {
       !writer_reads && must_block, this->get_order());
     //make sure this is an authorized lock type for the caller
     if (!register_or_test_auth(auth, l, test)) {
-      pthread_mutex_unlock(&master_lock);
       return -1;
     }
     block = l.block; //(auth. can override blocking mode to allow lock attempt)
     //exception to blocking: if 'auth' holds the write lock and a read is requested
     if (!writer_reads && !block && must_block) {
       if (!test) release_auth(auth, l);
-      pthread_mutex_unlock(&master_lock);
       return -1;
     }
     if (read) {
@@ -46,18 +72,12 @@ namespace lc {
       //NOTE: 'auth' is expected to prevent a deadlock if the caller already has
       //a read lock and there is a writer waiting
       if (!writer_reads) while (writer || writer_waiting) {
-        if (pthread_cond_wait(&read_wait, &master_lock) != 0) {
-          if (!test) release_auth(auth, l);
-          --readers_waiting;
-          pthread_mutex_unlock(&master_lock);
-          return -1;
-        }
+        read_wait.wait(local_lock);
       }
       --readers_waiting;
       count_type new_readers = ++readers;
       //if for some strange reason there's an overflow...
       assert((writer_reads || (!writer && !writer_waiting)) && readers > 0);
-      pthread_mutex_unlock(&master_lock);
       return new_readers;
     } else {
       //if the caller isn't the first in line for writing, wait until it is
@@ -66,34 +86,23 @@ namespace lc {
       while (writer_waiting) {
         //NOTE: use 'read_wait' here, since that's what a write unlock broadcasts on
         //NOTE: another thread should be blocking in 'write_wait' below
-        if (pthread_cond_wait(&read_wait, &master_lock) != 0) {
-          if (!test) release_auth(auth, l);
-          --readers_waiting;
-          pthread_mutex_unlock(&master_lock);
-          return -1;
-        }
+        read_wait.wait(local_lock);
       }
       --readers_waiting;
       writer_waiting = true;
       //get a write lock
       while (writer || readers) {
-        if (pthread_cond_wait(&write_wait, &master_lock) != 0) {
-          if (!test) release_auth(auth, l);
-          writer_waiting = false;
-          pthread_mutex_unlock(&master_lock);
-          return -1;
-        }
+        write_wait.wait(local_lock);
       }
       writer_waiting = false;
       writer = true;
       the_writer = auth;
-      pthread_mutex_unlock(&master_lock);
       return 0;
     }
   }
 
   rw_lock::count_type rw_lock::unlock(lock_auth_base *auth, bool read, bool test) {
-    if (pthread_mutex_lock(&master_lock) != 0) return -1;
+    std::unique_lock <std::mutex> local_lock(master_lock);
     if (!test) {
       unlock_data l(this, read, this->get_order());
       release_auth(auth, l);
@@ -102,9 +111,8 @@ namespace lc {
       assert(((auth && the_writer == auth) || !writer) && readers > 0);
       count_type new_readers = --readers;
       if (!new_readers && writer_waiting) {
-        pthread_cond_broadcast(&write_wait);
+        write_wait.notify_all();
       }
-      pthread_mutex_unlock(&master_lock);
       return new_readers;
     } else {
       assert(writer && ((auth && the_writer == auth) || !readers));
@@ -112,21 +120,17 @@ namespace lc {
       writer = false;
       the_writer = NULL;
       if (writer_waiting) {
-        pthread_cond_broadcast(&write_wait);
+        write_wait.notify_all();
       }
       if (readers_waiting) {
-        pthread_cond_broadcast(&read_wait);
+        read_wait.notify_all();
       }
-      pthread_mutex_unlock(&master_lock);
       return 0;
     }
   }
 
   rw_lock::~rw_lock() {
     assert(!readers && !readers_waiting && !writer && !writer_waiting);
-    pthread_mutex_destroy(&master_lock);
-    pthread_cond_destroy(&read_wait);
-    pthread_cond_destroy(&write_wait);
   }
 
 
@@ -162,43 +166,32 @@ namespace lc {
   }
 
 
-  w_lock::w_lock() : writer(false), writers_waiting(0) {
-    pthread_mutex_init(&master_lock, NULL);
-    pthread_cond_init(&write_wait, NULL);
-  }
+  w_lock::w_lock() : writer(false), writers_waiting(0) {}
 
   w_lock::count_type w_lock::lock(lock_auth_base *auth, bool /*read*/, bool block, bool test) {
-    if (pthread_mutex_lock(&master_lock) != 0) return -1;
+    std::unique_lock <std::mutex> local_lock(master_lock);
     //NOTE: 'false' is passed instead of 'read' because this can lock out other readers
     lock_data l(this, block, false, writers_waiting, writer, this->get_order());
     if (!register_or_test_auth(auth, l, test)) {
-      pthread_mutex_unlock(&master_lock);
       return -1;
     }
     block = l.block; //(auth. can override blocking mode to allow lock attempt)
     if (!block && writer) {
       if (!test) release_auth(auth, l);
-      pthread_mutex_unlock(&master_lock);
       return -1;
     }
     ++writers_waiting;
     assert(writers_waiting > 0);
     while (writer) {
-      if (pthread_cond_wait(&write_wait, &master_lock) != 0) {
-        if (!test) release_auth(auth, l);
-        --writers_waiting;
-        pthread_mutex_unlock(&master_lock);
-        return -1;
-      }
+      write_wait.wait(local_lock);
     }
     --writers_waiting;
     writer = true;
-    pthread_mutex_unlock(&master_lock);
     return 0;
   }
 
   w_lock::count_type w_lock::unlock(lock_auth_base *auth, bool /*read*/, bool test) {
-    if (pthread_mutex_lock(&master_lock) != 0) return -1;
+    std::unique_lock <std::mutex> local_lock(master_lock);
     if (!test) {
       unlock_data l(this, false, this->get_order());
       release_auth(auth, l);
@@ -206,30 +199,29 @@ namespace lc {
     assert(writer);
     writer = false;
     if (writers_waiting) {
-      pthread_cond_broadcast(&write_wait);
+      write_wait.notify_all();
     }
-    pthread_mutex_unlock(&master_lock);
     return 0;
   }
 
   w_lock::~w_lock() {
     assert(!writer && !writers_waiting);
-    pthread_mutex_destroy(&master_lock);
-    pthread_cond_destroy(&write_wait);
   }
 
 
-  dumb_lock::dumb_lock() {
-    pthread_mutex_init(&master_lock, NULL);
-  }
+  dumb_lock::dumb_lock() {}
 
   dumb_lock::count_type dumb_lock::lock(lock_auth_base *auth, bool /*read*/, bool block, bool test) {
     lock_data l(this, block, false, true, true, this->get_order());
     if (!register_or_test_auth(auth, l, test)) return -1;
     block = l.block; //(auth. can override blocking mode to allow lock attempt)
-    if ((block? pthread_mutex_lock : pthread_mutex_trylock)(&master_lock) != 0) {
-      if (!test) release_auth(auth, l);
-      return -1;
+    if (block) {
+      master_lock.lock();
+    } else {
+      if (!master_lock.try_lock()) {
+        if (!test) release_auth(auth, l);
+        return -1;
+      }
     }
     return 0;
   }
@@ -239,13 +231,13 @@ namespace lc {
       unlock_data l(this, false, this->get_order());
       release_auth(auth, l);
     }
-    return (pthread_mutex_unlock(&master_lock) == 0)? 0 : -1;
+    master_lock.unlock();
+    return 0;
   }
 
   dumb_lock::~dumb_lock() {
     //NOTE: this is the only reasonable way to see if there is currently a lock
-    assert(pthread_mutex_trylock(&master_lock) == 0);
-    pthread_mutex_destroy(&master_lock);
+    assert(master_lock.try_lock());
   }
 
 
