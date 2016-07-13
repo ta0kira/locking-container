@@ -88,8 +88,8 @@
  *   c++ -Wall -pedantic -std=c++11 -O2 -I../include graph-multi.cpp -o graph-multi -lpthread
  */
 
-#include <set>
-#include <map>
+#include <unordered_set>
+#include <unordered_map>
 #include <queue>
 #include <string>
 #include <memory>
@@ -114,7 +114,7 @@ struct graph_node {
   typedef Type stored_type;
   typedef lc::locking_container_base <graph_node> protected_node;
   typedef std::shared_ptr <protected_node>        shared_node;
-  typedef std::set <shared_node>                  connected_nodes;
+  typedef std::unordered_set <shared_node>        connected_nodes;
 
   inline graph_node(const stored_type &value) : obj(value) {}
 
@@ -155,44 +155,17 @@ protected:
     left.erase(right);
   }
 
-  static void get_two_writes(shared_node left, shared_node right, auth_type auth,
-    shared_meta_lock master_lock, typename protected_node::write_proxy &write1,
-    typename protected_node::write_proxy &write2, bool block = true) {
-    assert(left.get() && right.get());
-    bool order = left->get_order() < right->get_order();
-    if (master_lock && auth) {
-      if (order) {
-        write1 = left->get_write_multi(*master_lock, auth, block);
-        write2 = right->get_write_multi(*master_lock, auth, block);
-      } else {
-        write2 = right->get_write_multi(*master_lock, auth, block);
-        write1 = left->get_write_multi(*master_lock, auth, block);
-      }
-    } else if (auth) {
-      if (order) {
-        write1 = left->get_write_auth(auth, block);
-        write2 = right->get_write_auth(auth, block);
-      } else {
-        write2 = right->get_write_auth(auth, block);
-        write1 = left->get_write_auth(auth, block);
-      }
-    } else {
-      write1 = left->get_write(block);
-      write2 = right->get_write(block);
-    }
-  }
-
   template <class Func>
   static bool change_connection_common(Func func, shared_node left, shared_node right,
     auth_type auth = auth_type(), shared_meta_lock master_lock = shared_meta_lock(),
     bool try_multi = true) {
+    assert(left.get() && right.get());
     lc::meta_lock::write_proxy multi;
     if (try_multi && master_lock && !(multi = master_lock->get_write_auth(auth))) return false;
 
     typename protected_node::write_proxy write_l, write_r;
-    get_two_writes(left, right, auth, master_lock, write_l, write_r);
+    if (!lc::get_two_locks(*left, *right, write_l, write_r, true, auth, master_lock.get())) return false;
     multi.clear();
-    if (!write_l || !write_r) return false;
 
     (*func)(write_l->out, right);
     (*func)(write_r->in,  left);
@@ -227,11 +200,14 @@ public:
   using typename base::stored_type;
   using typename base::protected_node;
   using typename base::shared_node;
-  typedef Index                                       index_type;
-  typedef std::map <index_type, shared_node>          node_map;
-  typedef typename node_map::iterator                 iterator;
+
+  typedef Index                                        index_type;
+  typedef std::unordered_map <index_type, shared_node> node_map;
+  typedef typename node_map::iterator                  iterator;
+
   typedef lc::ordered_lock <lc::rw_lock>              lock_type;
   typedef lc::locking_container <node_map, lock_type> protected_node_map;
+  typedef lc::locking_container <node, lock_type>     locking_node;
 
   graph(order_type o) : master_lock(new lc::meta_lock), all_nodes(node_map(), o) {}
 
@@ -240,6 +216,10 @@ private:
   graph &operator = (const graph&);
 
 public:
+    inline auth_type get_new_auth() const {
+      return all_nodes.get_new_auth();
+    }
+
   shared_node get_graph_head(auth_type auth) {
     typename protected_node_map::write_proxy write = all_nodes.get_write_multi(*master_lock, auth);
     if (!write) return shared_node();
@@ -263,18 +243,16 @@ public:
     return all_nodes.get_order();
   }
 
-  virtual bool connect_nodes(shared_node left, shared_node right, auth_type auth,
-    bool try_multi = true) {
+  virtual bool connect_nodes(shared_node left, shared_node right, auth_type auth) {
     //NOTE: this doesn't use 'find_node' so that error returns only pertain to
     //failed lock operations
-    return node::connect_nodes(left, right, auth, try_multi? master_lock : shared_meta_lock());
+    return node::connect_nodes(left, right, auth, master_lock, !this->get_order());
   }
 
-  virtual bool disconnect_nodes(shared_node left, shared_node right, auth_type auth,
-    bool try_multi = true) {
+  virtual bool disconnect_nodes(shared_node left, shared_node right, auth_type auth) {
     //NOTE: this doesn't use 'find_node' so that error returns only pertain to
     //failed lock operations
-    return node::disconnect_nodes(left, right, auth, try_multi? master_lock : shared_meta_lock());
+    return node::disconnect_nodes(left, right, auth, master_lock, !this->get_order());
   }
 
   virtual shared_node find_node(const index_type &index, auth_type auth) {
@@ -285,10 +263,12 @@ public:
     return (found == write->end())? shared_node() : found->second;
   }
 
-  virtual bool insert_node(const index_type &index, shared_node value, auth_type auth) {
+  template <class ... Args>
+  inline bool insert_node(const index_type &index, auth_type auth, Args ... args) {
+    shared_node value(new locking_node(args...));
     assert(value.get());
     //NOTE: added nodes must have higher order than the node map itself
-    assert(value->get_order() > all_nodes.get_order());
+    assert(!all_nodes.get_order() || value->get_order() > all_nodes.get_order());
     return this->change_node(index, auth, &replace_node, value);
   }
 
@@ -307,7 +287,7 @@ public:
   }
 
   virtual ~graph() {
-    auth_type auth(all_nodes.get_new_auth());
+    auth_type auth(this->get_new_auth());
     typename protected_node_map::write_proxy write = all_nodes.get_write_auth(auth, false);
     assert(write);
     for (typename node_map::iterator current = write->begin(), end = write->end();
@@ -456,6 +436,55 @@ static void print_node(const Index &index, const graph_node <Type> &the_node,
 }
 
 
+template <class Node, class Target, class Compare, class Result>
+bool find_node_local(Node start, const Target &target, auth_type auth,
+  shared_meta_lock master_lock, Result &result, Compare *compare,
+  Result(*convert)(typename Node::element_type&, auth_type)) {
+  assert(start.get());
+  assert(master_lock.get());
+  std::unordered_set <const void*> visited;
+  typedef typename Node::element_type::type node_type;
+  std::queue <typename node_type::shared_node> pending;
+  pending.push(start);
+
+  while (pending.size()) {
+    typename node_type::shared_node next = pending.front();
+    pending.pop();
+    assert(next.get());
+    if ((*compare)(*next, target, auth)) {
+      result = (*convert)(*next, auth);
+      return true;
+    } else {
+      typename node_type::protected_node::write_proxy write =
+        next->get_write_multi(*master_lock, auth);
+      if (!write) return false;
+      for (typename node_type::connected_nodes::iterator current =
+           write->out.begin(), end = write->out.end(); current != end; ++current) {
+        if (visited.find(current->get()) == visited.end()) {
+          pending.push(*current);
+          visited.insert(current->get());
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+
+template <class Type>
+bool compare_protected_node_pointer(typename graph_node <Type> ::protected_node &left,
+  const typename graph_node <Type> ::protected_node &right, auth_type auth) {
+  return &left == &right;
+}
+
+
+template <class Type>
+Type *reference_to_pointer(Type &reference, auth_type auth) {
+  return &reference;
+}
+
+
 struct tagged_value {
   tagged_value(int t, int v = 0) : tag(t), value(v) {}
 
@@ -469,25 +498,35 @@ struct tagged_value {
 
 
 typedef graph <int, tagged_value> int_graph;
-//NOTE: using an ordered lock allows adding/removing edges without using the master lock
-typedef lc::locking_container <int_graph::node, lc::ordered_lock <lc::rw_lock> > locking_node;
+
+
+static bool compare_tagged_value_value(int_graph::protected_node &the_node,
+  int value, auth_type auth) {
+  int_graph::protected_node::read_proxy read = the_node.get_read_auth(auth);
+  if (!read) return false;
+  return read->obj.value == value;
+}
 
 
 int main() {
   int       graph_size = 10;
   int_graph main_graph(1);
-  auth_type main_auth(locking_node::new_auth());
+  auth_type main_auth(main_graph.get_new_auth());
+
+  //create all of the nodes
 
   for (int i = 0; i < graph_size; i++) {
     //NOTE: lock order must be greater than that of 'main_graph'
     order_type lock_order = main_graph.get_order() + i + 1;
-    if (!main_graph.insert_node(i, int_graph::shared_node(new locking_node(tagged_value(i), lock_order)), main_auth)) {
+    if (!main_graph.insert_node(i, main_auth, tagged_value(i, i), lock_order)) {
       fprintf(stderr, "could not add node %i\n", i);
       return 1;
     } else {
       fprintf(stderr, "added node %i\n", i);
     }
   }
+
+  //add edges to the graph
 
   for (int i = 0; i < graph_size; i++) {
     int from = i, to = (i + 1) % graph_size;
@@ -497,8 +536,7 @@ int main() {
       fprintf(stderr, "error finding nodes\n");
       return 1;
     }
-    //NOTE: 'false' means we don't wait for a multi-lock (because of ordered locks)
-    if (!main_graph.connect_nodes(left, right, main_auth, false)) {
+    if (!main_graph.connect_nodes(left, right, main_auth)) {
       fprintf(stderr, "could not connect node %i to node %i\n", from, to);
       return 1;
     } else {
@@ -506,7 +544,29 @@ int main() {
     }
   }
 
+  //traversal method of printing the graph
   print_graph(main_graph, main_auth, &tagged_value::get_tag);
+
+  //find a node meeting a certain criteria
+
+  int target = 3;
+  int_graph::protected_node *result = NULL;
+  if (!find_node_local(main_graph.get_graph_head(main_auth), target, main_auth,
+         main_graph.show_master_lock(), result, &compare_tagged_value_value,
+         &reference_to_pointer)) {
+    fprintf(stderr, "could not find node with target %i\n", target);
+    return 1;
+  } else {
+    assert(result);
+    int_graph::protected_node::read_proxy read = result->get_read_auth(main_auth);
+    if (!read) {
+      fprintf(stderr, "could not obtain lock on found node %p\n", result);
+      return 1;
+    }
+    fprintf(stderr, "found target value %i at node %i (%p)\n", target, read->obj.tag, result);
+  }
+
+  //remove one node at a time (just to see what happens)
 
   for (int i = 0; i < graph_size; i++) {
     int remove = i;
