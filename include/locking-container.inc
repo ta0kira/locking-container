@@ -1,6 +1,7 @@
 /* This software is released under the BSD License.
  |
- | Copyright (c) 2015-2016, Kevin P. Barry [ta0kira@gmail.com]
+ | Copyright (c) 2016, Google Inc.
+ | Copyright (c) 2015, Kevin P. Barry [ta0kira@gmail.com]
  | All rights reserved.
  |
  | Redistribution  and  use  in  source  and   binary  forms,  with  or  without
@@ -29,6 +30,8 @@
  | ARISING IN ANY  WAY OUT OF  THE USE OF THIS SOFTWARE, EVEN  IF ADVISED OF THE
  | POSSIBILITY OF SUCH DAMAGE.
  +~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+// Author: Kevin P. Barry [ta0kira@gmail.com] [kevinbarry@google.com]
 
 #include "locks.hpp"
 #include "lock-auth.hpp"
